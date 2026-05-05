@@ -8,9 +8,11 @@ import {
   aggregateWeeklyFailures,
   buildServiceEnvDayChart,
   defaultIstDayString,
-  fetchFailuresForIstDay,
+  envFailureRangeCaption,
+  fetchFailuresForEnvRange,
   fetchRecentRunsWithFailures,
   flattenFailuresWithRunTime,
+  parseEnvFailureRangeMode,
   summarizeRuns,
   topFailingServices,
 } from "@/lib/data";
@@ -38,11 +40,12 @@ function parseSelectedDay(raw: string | undefined): string {
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ day?: string }>;
+  searchParams: Promise<{ day?: string; envRange?: string }>;
 }) {
   const supabase = getSupabaseServer();
   const sp = await searchParams;
   const selectedDay = parseSelectedDay(sp.day);
+  const envRange = parseEnvFailureRangeMode(sp.envRange);
 
   const runs = await fetchRecentRunsWithFailures(RECENT_RUNS_LIMIT);
   const failures = flattenFailuresWithRunTime(runs);
@@ -50,10 +53,13 @@ export default async function Home({
   const daily = aggregateDailyFailures(failures, 14);
   const dailyOutcomes = aggregateDailyRunOutcomes(runs, 14);
   const weekly = aggregateWeeklyFailures(failures, 8);
-  const services = topFailingServices(failures, 12);
+  const services = topFailingServices(failures, 24);
 
-  const dayFailures = supabase ? await fetchFailuresForIstDay(selectedDay) : [];
-  const serviceEnvDayRows = buildServiceEnvDayChart(dayFailures);
+  const envFailures = supabase
+    ? await fetchFailuresForEnvRange(envRange, selectedDay)
+    : [];
+  const serviceEnvDayRows = buildServiceEnvDayChart(envFailures);
+  const envCaption = envFailureRangeCaption(envRange, selectedDay);
 
   if (!supabase) {
     return (
@@ -139,7 +145,9 @@ export default async function Home({
 
         <div className="mt-6 md:mt-7">
           <ServicesByDaySection
+            envRange={envRange}
             selectedDay={selectedDay}
+            caption={envCaption}
             rows={serviceEnvDayRows}
           />
         </div>

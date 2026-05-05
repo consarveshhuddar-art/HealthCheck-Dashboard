@@ -35,7 +35,7 @@ export function ServicesByDayEnvChart({ data }: { data: ServiceEnvDayRow[] }) {
         <p className="mb-2 text-xs text-slate-500">
           {hasAny
             ? "Hover bars for counts. Services with zero failures still shown."
-            : "No failures recorded for this day (all zeros)."}
+            : "No failures in this range (all zeros)."}
         </p>
         <div className="h-[420px] w-full min-w-0">
           <ResponsiveContainer width="100%" height={420} minWidth={0}>

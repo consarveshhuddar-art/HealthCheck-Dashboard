@@ -83,7 +83,7 @@ export function ChartsSection({
         <div className="border-b border-slate-100/90 pb-3">
           <h2 className={dashboardUi.panelTitle}>Top services by failure count</h2>
           <p className={dashboardUi.panelDesc}>
-            {`Ranked by failure rows per service — loaded runs (newest ~${RECENT_RUNS_LIMIT}). Horizontal bars vs max count in this list; scroll when many services.`}
+            {`Ranked by failure rows per service — loaded runs (newest ~${RECENT_RUNS_LIMIT}). Each bar is relative to the highest count in this list.`}
           </p>
         </div>
         <div className={dashboardUi.chartWell}>

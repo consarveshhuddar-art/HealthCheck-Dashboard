@@ -29,17 +29,32 @@ body {
   }
 }
 
+.leaderboard-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(203 213 225 / 0.9) transparent;
+}
+
+.leaderboard-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.leaderboard-scroll::-webkit-scrollbar-thumb {
+  background-color: rgb(203 213 225);
+  border-radius: 9999px;
+}
+
 .moving-gradient-bg {
   background: linear-gradient(
     125deg,
-    #fff7ed,
-    #fce7f3,
-    #e0e7ff,
-    #a5f3fc,
-    #bbf7d0,
-    #fef08a,
-    #fed7aa,
-    #fff7ed
+    #ea580c,
+    #f97316,
+    #fb923c,
+    #fbbf24,
+    #facc15,
+    #fde047,
+    #fbbf24,
+    #f97316,
+    #ea580c
   );
   background-size: 400% 400%;
   animation: gradient-flow 22s ease infinite;

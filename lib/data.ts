@@ -1,5 +1,5 @@
 import "server-only";
-import { addDays, addWeeks, parseISO, startOfWeek } from "date-fns";
+import { addDays, addWeeks, parseISO, startOfWeek, subDays } from "date-fns";
 import { formatInTimeZone, fromZonedTime, toZonedTime } from "date-fns-tz";
 import { EXPECTED_SERVICES } from "@/lib/healthServices";
 import { RECENT_RUNS_LIMIT } from "@/lib/limits";
@@ -17,6 +17,38 @@ const RUN_COLUMNS =
 
 const FAILURE_COLUMNS =
   "id, run_id, env, service_name, http_code, detail";
+
+/**
+ * PostgREST `.in("run_id", …)` is often issued as GET; thousands of UUIDs blow past
+ * URL / Node undici header limits → UND_ERR_HEADERS_OVERFLOW.
+ */
+const FAILURE_RUN_ID_CHUNK = 60;
+
+async function fetchFailuresForRunIds(
+  runIds: string[],
+): Promise<HealthCheckFailure[]> {
+  const supabase = getSupabaseServer();
+  if (!supabase || runIds.length === 0) return [];
+
+  const out: HealthCheckFailure[] = [];
+  for (let i = 0; i < runIds.length; i += FAILURE_RUN_ID_CHUNK) {
+    const chunk = runIds.slice(i, i + FAILURE_RUN_ID_CHUNK);
+    const { data: failures, error } = await supabase
+      .from("health_check_failures")
+      .select(FAILURE_COLUMNS)
+      .in("run_id", chunk);
+    if (error) {
+      console.error(
+        "fetchFailuresForRunIds:",
+        error.message,
+        error.code ?? "",
+      );
+      continue;
+    }
+    out.push(...((failures ?? []) as HealthCheckFailure[]));
+  }
+  return out;
+}
 
 export async function fetchRecentRunsWithFailures(
   limit = RECENT_RUNS_LIMIT,
@@ -45,25 +77,12 @@ export async function fetchRecentRunsWithFailures(
 
   const failuresByRun = new Map<string, HealthCheckFailure[]>();
   if (ids.length > 0) {
-    const { data: failures, error: failErr } = await supabase
-      .from("health_check_failures")
-      .select(FAILURE_COLUMNS)
-      .in("run_id", ids);
-
-    if (failErr) {
-      console.error(
-        "fetchRecentRunsWithFailures failures:",
-        failErr.message,
-        failErr.code ?? "",
-        failErr.details ?? "",
-      );
-    } else {
-      for (const row of failures ?? []) {
-        const rid = row.run_id as string;
-        const list = failuresByRun.get(rid) ?? [];
-        list.push(row as HealthCheckFailure);
-        failuresByRun.set(rid, list);
-      }
+    const failures = await fetchFailuresForRunIds(ids);
+    for (const row of failures) {
+      const rid = row.run_id as string;
+      const list = failuresByRun.get(rid) ?? [];
+      list.push(row as HealthCheckFailure);
+      failuresByRun.set(rid, list);
     }
   }
 
@@ -258,6 +277,135 @@ function istDayUtcRange(day: string): { startIso: string; endIso: string } {
   return { startIso: start.toISOString(), endIso: end.toISOString() };
 }
 
+export type EnvFailureRangeMode = "day" | "week" | "all";
+
+export function parseEnvFailureRangeMode(
+  raw: string | undefined,
+): EnvFailureRangeMode {
+  if (raw === "week" || raw === "all") return raw;
+  return "day";
+}
+
+/** Rolling 7 IST calendar days ending today (inclusive). */
+export function last7IstDaysUtcRange(): { startIso: string; endIso: string } {
+  const istNow = toZonedTime(new Date(), IST);
+  const endDay = formatInTimeZone(istNow, IST, "yyyy-MM-dd");
+  const startLocal = subDays(istNow, 6);
+  const startDay = formatInTimeZone(startLocal, IST, "yyyy-MM-dd");
+  return {
+    startIso: istDayUtcRange(startDay).startIso,
+    endIso: istDayUtcRange(endDay).endIso,
+  };
+}
+
+export function envFailureRangeCaption(
+  mode: EnvFailureRangeMode,
+  day: string,
+): { title: string; detail: string } {
+  if (mode === "day") {
+    const label = formatInTimeZone(
+      parseISO(`${day}T06:30:00.000Z`),
+      IST,
+      "d MMM yyyy",
+    );
+    return {
+      title: `One day · ${label} (IST)`,
+      detail:
+        "Failures linked to runs created on this IST calendar day only.",
+    };
+  }
+  if (mode === "week") {
+    const { startIso, endIso } = last7IstDaysUtcRange();
+    const a = formatInTimeZone(parseISO(startIso), IST, "d MMM yyyy");
+    const b = formatInTimeZone(parseISO(endIso), IST, "d MMM yyyy");
+    return {
+      title: `Last 7 days · ${a} – ${b} (IST)`,
+      detail:
+        "Failures linked to runs whose created_at falls in this IST window (today and the six prior calendar days).",
+    };
+  }
+  return {
+    title: "All time",
+    detail:
+      "Aggregates every row (paginated load; capped at 150k rows for safety).",
+  };
+}
+
+/** Failures for runs created in [startIso, endIso] (typically IST-derived instants). */
+export async function fetchFailuresForCreatedAtRange(
+  startIso: string,
+  endIso: string,
+): Promise<HealthCheckFailure[]> {
+  const supabase = getSupabaseServer();
+  if (!supabase) return [];
+
+  const { data: runs, error: runsErr } = await supabase
+    .from("health_check_runs")
+    .select("id")
+    .gte("created_at", startIso)
+    .lte("created_at", endIso);
+
+  if (runsErr) {
+    console.error(
+      "fetchFailuresForCreatedAtRange runs:",
+      runsErr.message,
+      runsErr.code ?? "",
+    );
+    return [];
+  }
+
+  const ids = (runs ?? []).map((r) => r.id).filter(Boolean);
+  return fetchFailuresForRunIds(ids);
+}
+
+const ALL_FAILURES_MAX = 150_000;
+
+/** All failure rows (paginated), newest-first via id desc optional — here ascending id for stable pages. */
+export async function fetchAllFailuresLimited(): Promise<HealthCheckFailure[]> {
+  const supabase = getSupabaseServer();
+  if (!supabase) return [];
+
+  const pageSize = 1000;
+  const out: HealthCheckFailure[] = [];
+  let offset = 0;
+
+  while (out.length < ALL_FAILURES_MAX) {
+    const take = Math.min(pageSize, ALL_FAILURES_MAX - out.length);
+    const { data, error } = await supabase
+      .from("health_check_failures")
+      .select(FAILURE_COLUMNS)
+      .order("id", { ascending: true })
+      .range(offset, offset + take - 1);
+
+    if (error) {
+      console.error("fetchAllFailuresLimited:", error.message, error.code ?? "");
+      break;
+    }
+    const rows = (data ?? []) as HealthCheckFailure[];
+    if (rows.length === 0) break;
+    out.push(...rows);
+    if (rows.length < take) break;
+    offset += rows.length;
+  }
+
+  return out;
+}
+
+export async function fetchFailuresForEnvRange(
+  mode: EnvFailureRangeMode,
+  day: string,
+): Promise<HealthCheckFailure[]> {
+  if (mode === "day") {
+    const { startIso, endIso } = istDayUtcRange(day);
+    return fetchFailuresForCreatedAtRange(startIso, endIso);
+  }
+  if (mode === "week") {
+    const { startIso, endIso } = last7IstDaysUtcRange();
+    return fetchFailuresForCreatedAtRange(startIso, endIso);
+  }
+  return fetchAllFailuresLimited();
+}
+
 /** Strip `:branch` from deployment-style names from Jenkins / DB */
 export function normalizeServiceName(raw: string): string {
   let s = raw.trim();
@@ -286,7 +434,7 @@ export type ServiceEnvDayRow = {
   sdet05: number;
 };
 
-/** Group failures for one IST day into per-service counts for sdet-02 vs sdet-05 */
+/** Group failures into per-service counts for sdet-02 vs sdet-05 (any time window). */
 export function buildServiceEnvDayChart(
   failures: HealthCheckFailure[],
 ): ServiceEnvDayRow[] {
@@ -314,42 +462,6 @@ export function buildServiceEnvDayChart(
 export async function fetchFailuresForIstDay(
   day: string,
 ): Promise<HealthCheckFailure[]> {
-  const supabase = getSupabaseServer();
-  if (!supabase) return [];
-
   const { startIso, endIso } = istDayUtcRange(day);
-
-  const { data: runs, error: runsErr } = await supabase
-    .from("health_check_runs")
-    .select("id")
-    .gte("created_at", startIso)
-    .lte("created_at", endIso);
-
-  if (runsErr) {
-    console.error(
-      "fetchFailuresForIstDay runs:",
-      runsErr.message,
-      runsErr.code ?? "",
-    );
-    return [];
-  }
-
-  const ids = (runs ?? []).map((r) => r.id).filter(Boolean);
-  if (ids.length === 0) return [];
-
-  const { data: failures, error: failErr } = await supabase
-    .from("health_check_failures")
-    .select(FAILURE_COLUMNS)
-    .in("run_id", ids);
-
-  if (failErr) {
-    console.error(
-      "fetchFailuresForIstDay failures:",
-      failErr.message,
-      failErr.code ?? "",
-    );
-    return [];
-  }
-
-  return (failures ?? []) as HealthCheckFailure[];
+  return fetchFailuresForCreatedAtRange(startIso, endIso);
 }
