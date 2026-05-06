@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Suspense } from "react";
+import { Geist_Mono, Inter } from "next/font/google";
+import { DashboardNavProvider } from "@/components/DashboardNavProvider";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
@@ -25,14 +27,13 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full scroll-smooth antialiased`}
+      className={`${inter.variable} ${geistMono.variable} h-full scroll-smooth antialiased`}
+      data-scroll-behavior="smooth"
     >
-      <body className="relative min-h-full text-slate-900">
-        <div
-          className="moving-gradient-bg pointer-events-none fixed inset-0 -z-10"
-          aria-hidden
-        />
-        {children}
+      <body className="relative min-h-full bg-[#F6F8FB] font-sans text-[#0B1220]">
+        <Suspense fallback={null}>
+          <DashboardNavProvider>{children}</DashboardNavProvider>
+        </Suspense>
       </body>
     </html>
   );

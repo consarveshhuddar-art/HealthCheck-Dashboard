@@ -11,29 +11,35 @@ import type {
   WeeklyPoint,
 } from "@/lib/data";
 import { dashboardUi } from "@/lib/dashboardUi";
-import { RECENT_RUNS_LIMIT } from "@/lib/limits";
 
 export function ChartsSection({
   daily,
   weekly,
   dailyOutcomes,
   services,
+  runsCap,
+  trendDailyDays,
+  trendWeeklyBuckets,
 }: {
   daily: DailyPoint[];
   weekly: WeeklyPoint[];
   dailyOutcomes: DailyRunOutcome[];
   services: ServiceCount[];
+  runsCap: number;
+  trendDailyDays: number;
+  trendWeeklyBuckets: number;
 }) {
   const dailyRows = daily.map((d) => ({ label: d.label, count: d.count }));
 
   return (
-    <div className="flex flex-col gap-6 md:gap-7">
-      <div className="grid min-w-0 gap-6 md:gap-7 lg:grid-cols-2 lg:items-stretch">
+    <div className="flex flex-col gap-4 md:gap-4">
+      <div className="grid min-w-0 gap-4 md:gap-4 lg:grid-cols-2 lg:items-stretch">
         <section className={`flex min-h-0 flex-col ${dashboardUi.panel}`}>
-          <div className="shrink-0 border-b border-slate-100/90 pb-3">
+          <div className={`shrink-0 ${dashboardUi.panelHeaderDivider}`}>
             <h2 className={dashboardUi.panelTitle}>Failures per day</h2>
             <p className={dashboardUi.panelDesc}>
-              Area trend — failure rows per IST calendar day (last 14 days).
+              Area trend — failure rows per IST calendar day (last {trendDailyDays}{" "}
+              days, ~1 month). Independent of the Runs day/week/month control.
             </p>
           </div>
           <div className={dashboardUi.chartWell}>
@@ -42,10 +48,11 @@ export function ChartsSection({
         </section>
 
         <section className={`flex min-h-0 flex-col ${dashboardUi.panel}`}>
-          <div className="shrink-0 border-b border-slate-100/90 pb-3">
+          <div className={`shrink-0 ${dashboardUi.panelHeaderDivider}`}>
             <h2 className={dashboardUi.panelTitle}>Failures per rolling week</h2>
             <p className={dashboardUi.panelDesc}>
-              Area trend — IST calendar weeks (Mon–Sun), consecutive blocks of seven days.
+              Area trend — IST calendar weeks (Mon–Sun), last {trendWeeklyBuckets}{" "}
+              weeks (~1 month). Independent of the Runs day/week/month control.
             </p>
           </div>
           <div className={dashboardUi.chartWell}>
@@ -55,21 +62,21 @@ export function ChartsSection({
       </div>
 
       <section className={dashboardUi.panel}>
-        <div className="border-b border-slate-100/90 pb-3">
+        <div className={dashboardUi.panelHeaderDivider}>
           <h2 className={dashboardUi.panelTitle}>Run outcomes per day (IST)</h2>
           <p className={dashboardUi.panelDesc}>
-            One donut per calendar day: total runs in the loaded window, split into
-            successful (no failure rows) vs failed (at least one). Seven days at a time;
-            same 14-day range as the daily trend — use arrows to browse earlier or later
-            days.
+            One donut per IST calendar day: all runs that day (last {trendDailyDays}{" "}
+            days, ~1 month), split into successful (no failure rows) vs failed (at least
+            one). Seven days at a time — use arrows to browse earlier or later days.
+            Independent of the Runs day/week/month control.
           </p>
-          <div className="mt-3 flex flex-wrap items-center gap-4 border-t border-slate-100/80 pt-3 text-[11px] text-slate-600">
+          <div className="mt-2 flex flex-wrap items-center gap-3 border-t border-[#EAEFF5] pt-2 text-[10px] text-[#94A3B8]">
             <span className="inline-flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" aria-hidden />
+              <span className="h-2 w-2 rounded-sm bg-emerald-600/55" aria-hidden />
               Successful runs
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-sm bg-red-500" aria-hidden />
+              <span className="h-2 w-2 rounded-sm bg-red-600/45" aria-hidden />
               Failed runs
             </span>
           </div>
@@ -80,10 +87,10 @@ export function ChartsSection({
       </section>
 
       <section className={dashboardUi.panel}>
-        <div className="border-b border-slate-100/90 pb-3">
+        <div className={dashboardUi.panelHeaderDivider}>
           <h2 className={dashboardUi.panelTitle}>Top services by failure count</h2>
           <p className={dashboardUi.panelDesc}>
-            {`Ranked by failure rows per service — loaded runs (newest ~${RECENT_RUNS_LIMIT}). Each bar is relative to the highest count in this list.`}
+            {`Ranked by failure rows per service — loaded runs (newest ~${runsCap}). Each bar is relative to the highest count in this list.`}
           </p>
         </div>
         <div className={dashboardUi.chartWell}>

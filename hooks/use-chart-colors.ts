@@ -2,16 +2,16 @@
 
 import { useMemo } from "react";
 
-/** Recharts chrome — single light theme with readable slate accents. */
+/** Recharts — ultra-light grid, minimal axis emphasis. */
 const chartColors = {
-  grid: "#e2e8f0",
-  axis: "#cbd5e1",
-  tick: "#64748b",
-  tooltipBg: "#ffffff",
-  tooltipBorder: "#e2e8f0",
-  tooltipLabel: "#334155",
-  tooltipBody: "#475569",
-  legend: "#64748b",
+  grid: "#EEF2F7",
+  axis: "transparent",
+  tick: "#64748B",
+  tooltipBg: "#1F2937",
+  tooltipBorder: "rgba(255,255,255,0.08)",
+  tooltipLabel: "#F9FAFB",
+  tooltipBody: "#D1D5DB",
+  legend: "#64748B",
 } as const;
 
 export function useChartColors() {

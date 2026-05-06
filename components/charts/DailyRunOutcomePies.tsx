@@ -21,16 +21,16 @@ function DayDonut({ o }: { o: DailyRunOutcome }) {
   if (o.total === 0) {
     return (
       <div className="flex flex-col items-center gap-1.5">
-        <span className="text-xs font-medium tabular-nums text-slate-700">
+        <span className="text-xs font-medium tabular-nums text-[#111827]">
           {o.label}
         </span>
         <div
-          className="flex h-[112px] w-[112px] shrink-0 items-center justify-center rounded-full border border-dashed border-slate-200 bg-slate-50/90 text-[10px] text-slate-400"
+          className="flex h-[112px] w-[112px] shrink-0 items-center justify-center rounded-full border border-dashed border-[#EAEFF5] bg-[#FAFBFC] text-[10px] text-[#9CA3AF]"
           aria-hidden
         >
           No runs
         </div>
-        <div className="h-8 text-center text-[10px] text-slate-400">
+        <div className="h-8 text-center text-[10px] text-[#9CA3AF]">
           Total 0
         </div>
       </div>
@@ -44,7 +44,7 @@ function DayDonut({ o }: { o: DailyRunOutcome }) {
 
   return (
     <div className="flex flex-col items-center gap-1.5">
-      <span className="text-xs font-medium tabular-nums text-slate-700">
+      <span className="text-xs font-medium tabular-nums text-[#111827]">
         {o.label}
       </span>
       <div className="h-[112px] w-full min-w-[112px] max-w-[140px]">
@@ -72,20 +72,23 @@ function DayDonut({ o }: { o: DailyRunOutcome }) {
                 fontSize: "12px",
                 backgroundColor: colors.tooltipBg,
                 color: colors.tooltipBody,
+                boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+                padding: "10px 12px",
               }}
-              labelStyle={{ color: colors.tooltipLabel }}
+              labelStyle={{ color: colors.tooltipLabel, fontWeight: 500 }}
+              itemStyle={{ color: colors.tooltipBody }}
             />
           </PieChart>
         </ResponsiveContainer>
       </div>
-      <div className="w-full max-w-[140px] text-center text-[10px] leading-snug text-slate-600">
-        <div className="font-medium text-slate-700">
+      <div className="w-full max-w-[140px] text-center text-[10px] leading-snug text-[#6B7280]">
+        <div className="font-medium text-[#111827]">
           Total {o.total}
         </div>
         <div className="mt-0.5">
-          <span className="font-medium text-emerald-600">{o.success} ok</span>
-          <span className="text-slate-400"> · </span>
-          <span className="font-medium text-red-600">{o.failed} failed</span>
+          <span className="font-medium text-emerald-700">{o.success} ok</span>
+          <span className="text-[#D1D5DB]"> · </span>
+          <span className="font-medium text-[#991B1B]">{o.failed} failed</span>
         </div>
       </div>
     </div>
@@ -106,7 +109,7 @@ export function DailyRunOutcomePies({ data }: { data: DailyRunOutcome[] }) {
 
   if (!data.length) {
     return (
-      <p className="text-sm text-slate-500">No days in range.</p>
+      <p className="text-sm text-[#6B7280]">No days in range.</p>
     );
   }
 
@@ -119,19 +122,19 @@ export function DailyRunOutcomePies({ data }: { data: DailyRunOutcome[] }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[11px] text-slate-500">
+        <p className="text-[11px] text-[#6B7280]">
           {data.length > PAGE_SIZE ? (
             <>
-              Days <span className="font-medium text-slate-700">{labelFrom}</span>
+              Days <span className="font-medium text-[#111827]">{labelFrom}</span>
               {" — "}
-              <span className="font-medium text-slate-700">{labelTo}</span>
-              <span className="text-slate-400">
+              <span className="font-medium text-[#111827]">{labelTo}</span>
+              <span className="text-[#9CA3AF]">
                 {" "}
                 ({start + 1}–{start + page.length} of {data.length})
               </span>
             </>
           ) : (
-            <span className="text-slate-600">All {page.length} days in range</span>
+            <span className="text-[#6B7280]">All {page.length} days in range</span>
           )}
         </p>
         {data.length > PAGE_SIZE ? (
@@ -141,7 +144,7 @@ export function DailyRunOutcomePies({ data }: { data: DailyRunOutcome[] }) {
               disabled={!canPrev}
               aria-label="Show earlier 7 days"
               onClick={() => setStart((s) => Math.max(0, s - PAGE_SIZE))}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white/90 text-lg font-medium text-slate-700 shadow-sm transition-all duration-200 hover:bg-white hover:shadow disabled:pointer-events-none disabled:opacity-35"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] border border-[#EAEFF5] bg-white text-lg font-medium text-[#475569] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-[background-color,box-shadow,border-color] duration-150 ease-out hover:border-[#E2E8F0] hover:bg-[#F9FAFB] hover:shadow-[0_2px_8px_rgba(15,23,42,0.06)] disabled:pointer-events-none disabled:opacity-35"
             >
               ‹
             </button>
@@ -152,7 +155,7 @@ export function DailyRunOutcomePies({ data }: { data: DailyRunOutcome[] }) {
               onClick={() =>
                 setStart((s) => Math.min(maxStart, s + PAGE_SIZE))
               }
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white/90 text-lg font-medium text-slate-700 shadow-sm transition-all duration-200 hover:bg-white hover:shadow disabled:pointer-events-none disabled:opacity-35"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] border border-[#EAEFF5] bg-white text-lg font-medium text-[#475569] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-[background-color,box-shadow,border-color] duration-150 ease-out hover:border-[#E2E8F0] hover:bg-[#F9FAFB] hover:shadow-[0_2px_8px_rgba(15,23,42,0.06)] disabled:pointer-events-none disabled:opacity-35"
             >
               ›
             </button>

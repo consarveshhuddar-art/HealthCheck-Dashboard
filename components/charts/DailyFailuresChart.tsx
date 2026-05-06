@@ -16,7 +16,7 @@ export type DailyRow = { label: string; count: number };
 import { TREND_CHART_HEIGHT } from "@/components/charts/trendConstants";
 import { useChartColors } from "@/hooks/use-chart-colors";
 
-const MARGIN = { top: 12, right: 12, left: 4, bottom: 44 };
+const MARGIN = { top: 6, right: 8, left: 0, bottom: 40 };
 
 export function DailyFailuresChart({ data }: { data: DailyRow[] }) {
   const colors = useChartColors();
@@ -26,7 +26,7 @@ export function DailyFailuresChart({ data }: { data: DailyRow[] }) {
   const series = useMemo(
     () => ({
       gradient: [
-        { off: "5%", color: "#ef4444", op: 0.35 },
+        { off: "5%", color: "#ef4444", op: 0.075 },
         { off: "95%", color: "#ef4444", op: 0 },
       ],
       stroke: "#dc2626",
@@ -38,7 +38,7 @@ export function DailyFailuresChart({ data }: { data: DailyRow[] }) {
   if (!data.length) {
     return (
       <div
-        className="flex w-full min-w-0 items-center justify-center text-sm text-slate-500"
+        className="flex w-full min-w-0 items-center justify-center text-sm text-[#6B7280]"
         style={{ height: TREND_CHART_HEIGHT }}
       >
         No failure data in this range.
@@ -47,7 +47,10 @@ export function DailyFailuresChart({ data }: { data: DailyRow[] }) {
   }
 
   return (
-    <div className="h-[300px] w-full min-w-0">
+    <div
+      className="w-full min-w-0"
+      style={{ minHeight: TREND_CHART_HEIGHT }}
+    >
       <ResponsiveContainer width="100%" height={TREND_CHART_HEIGHT} minWidth={0}>
         <AreaChart data={data} margin={MARGIN}>
           <defs>
@@ -63,9 +66,9 @@ export function DailyFailuresChart({ data }: { data: DailyRow[] }) {
             </linearGradient>
           </defs>
           <CartesianGrid
-            strokeDasharray="3 3"
             stroke={colors.grid}
             vertical={false}
+            horizontal
           />
           <XAxis
             dataKey="label"
@@ -75,35 +78,42 @@ export function DailyFailuresChart({ data }: { data: DailyRow[] }) {
             angle={-32}
             textAnchor="end"
             height={48}
-            axisLine={{ stroke: colors.axis }}
+            axisLine={false}
           />
           <YAxis
             allowDecimals={false}
             tick={{ fill: colors.tick, fontSize: 11 }}
             tickLine={false}
             axisLine={false}
-            width={36}
+            width={38}
           />
           <Tooltip
-            cursor={{ stroke: colors.axis, strokeWidth: 1 }}
+            cursor={{ stroke: "#EEF2F7", strokeWidth: 1, strokeOpacity: 0.9 }}
             contentStyle={{
               borderRadius: "8px",
               border: `1px solid ${colors.tooltipBorder}`,
               fontSize: "12px",
               backgroundColor: colors.tooltipBg,
               color: colors.tooltipBody,
+              boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+              padding: "10px 12px",
             }}
-            labelStyle={{ color: colors.tooltipLabel, fontWeight: 600 }}
+            labelStyle={{
+              color: colors.tooltipLabel,
+              fontWeight: 500,
+              marginBottom: 4,
+            }}
+            itemStyle={{ color: colors.tooltipBody }}
           />
           <Area
-            type="monotone"
+            type="natural"
             dataKey="count"
             name="Failures"
             stroke={series.stroke}
-            strokeWidth={2}
+            strokeWidth={1}
             fill={`url(#${gradientId})`}
-            dot={{ r: 2, fill: series.dot, strokeWidth: 0 }}
-            activeDot={{ r: 4 }}
+            dot={false}
+            activeDot={{ r: 3, fill: series.dot, strokeWidth: 0 }}
           />
         </AreaChart>
       </ResponsiveContainer>

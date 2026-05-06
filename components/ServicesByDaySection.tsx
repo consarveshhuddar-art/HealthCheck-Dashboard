@@ -1,15 +1,19 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { useDashboardNavigate } from "@/components/DashboardNavProvider";
 import type { ServiceEnvDayRow } from "@/lib/data";
 import { dashboardUi } from "@/lib/dashboardUi";
 import { ServicesByDayEnvChart } from "@/components/charts/ServicesByDayEnvChart";
 
-function hrefForNav(opts: {
-  envRange: "day" | "week" | "all";
-  day: string;
-}): string {
-  const p = new URLSearchParams();
+function hrefForNav(
+  sp: Pick<URLSearchParams, "toString">,
+  opts: {
+    envRange: "day" | "week" | "all";
+    day: string;
+  },
+): string {
+  const p = new URLSearchParams(sp.toString());
   if (opts.envRange === "week") {
     p.set("envRange", "week");
     p.set("day", opts.day);
@@ -17,6 +21,7 @@ function hrefForNav(opts: {
     p.set("envRange", "all");
     p.set("day", opts.day);
   } else {
+    p.delete("envRange");
     p.set("day", opts.day);
   }
   return `/?${p.toString()}`;
@@ -33,38 +38,39 @@ export function ServicesByDaySection({
   caption: { title: string; detail: string };
   rows: ServiceEnvDayRow[];
 }) {
-  const router = useRouter();
+  const navigate = useDashboardNavigate();
+  const searchParams = useSearchParams();
 
   const tabBtn = (active: boolean) =>
-    `rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
+    `rounded-md px-3 py-1.5 text-xs font-medium transition-colors duration-150 ease-out ${
       active
-        ? "bg-white/90 text-slate-900 shadow-sm ring-1 ring-slate-950/[0.08]"
-        : "text-slate-600 hover:bg-white/50 hover:text-slate-800"
+        ? "bg-white text-[#0B1220] shadow-[0_1px_2px_rgba(0,0,0,0.04)] ring-1 ring-[#EAEFF5]"
+        : "text-[#64748B] hover:bg-[#F9FAFB] hover:text-[#334155]"
     }`;
 
   return (
     <section className={dashboardUi.panel}>
-      <div className="flex flex-col gap-4 border-b border-slate-100/90 pb-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-3 border-b border-[#EAEFF5] pb-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-1">
           <h2 className={dashboardUi.panelTitle}>
             Failures per service (by env)
           </h2>
-          <p className="text-[11px] font-medium text-violet-800/90">
+          <p className="text-[11px] font-medium text-[#475569]">
             {caption.title}
           </p>
           <p className={dashboardUi.panelDesc}>
             {caption.detail} Source:{" "}
-            <code className="rounded border border-slate-200 bg-white/80 px-1.5 py-px font-mono text-[11px] text-slate-700">
+            <code className="rounded-md border border-[#EAEFF5] bg-[#F9FAFB] px-1.5 py-px font-mono text-[11px] text-[#475569]">
               health_check_failures
             </code>
             . Bars:{" "}
-            <span className="font-medium text-violet-700">sdet-02</span> vs{" "}
-            <span className="font-medium text-orange-700">sdet-05</span> (
-            <code className="font-mono text-[11px] text-slate-600">
+            <span className="font-medium text-violet-800/75">sdet-02</span> vs{" "}
+            <span className="font-medium text-orange-800/70">sdet-05</span> (
+            <code className="font-mono text-[11px] text-[#6B7280]">
               k8s-sdet-02
             </code>{" "}
             /{" "}
-            <code className="font-mono text-[11px] text-slate-600">
+            <code className="font-mono text-[11px] text-[#6B7280]">
               k8s-sdet-05
             </code>
             ).
@@ -72,7 +78,7 @@ export function ServicesByDaySection({
         </div>
         <div className="flex w-full flex-col gap-3 sm:w-auto sm:shrink-0 sm:items-end">
           <div
-            className="inline-flex rounded-xl border border-slate-200/90 bg-slate-100/50 p-1 ring-1 ring-slate-950/[0.04]"
+            className="inline-flex rounded-[10px] border border-[#EAEFF5] bg-[#F9FAFB] p-1"
             role="tablist"
             aria-label="Time range"
           >
@@ -82,7 +88,13 @@ export function ServicesByDaySection({
               aria-selected={envRange === "day"}
               className={tabBtn(envRange === "day")}
               onClick={() =>
-                router.push(hrefForNav({ envRange: "day", day: selectedDay }))
+                navigate(
+                  hrefForNav(searchParams, {
+                    envRange: "day",
+                    day: selectedDay,
+                  }),
+                  { scroll: false },
+                )
               }
             >
               Day
@@ -93,7 +105,13 @@ export function ServicesByDaySection({
               aria-selected={envRange === "week"}
               className={tabBtn(envRange === "week")}
               onClick={() =>
-                router.push(hrefForNav({ envRange: "week", day: selectedDay }))
+                navigate(
+                  hrefForNav(searchParams, {
+                    envRange: "week",
+                    day: selectedDay,
+                  }),
+                  { scroll: false },
+                )
               }
             >
               Last 7 days
@@ -104,7 +122,13 @@ export function ServicesByDaySection({
               aria-selected={envRange === "all"}
               className={tabBtn(envRange === "all")}
               onClick={() =>
-                router.push(hrefForNav({ envRange: "all", day: selectedDay }))
+                navigate(
+                  hrefForNav(searchParams, {
+                    envRange: "all",
+                    day: selectedDay,
+                  }),
+                  { scroll: false },
+                )
               }
             >
               All time
@@ -117,7 +141,7 @@ export function ServicesByDaySection({
           >
             <label
               htmlFor="health-day"
-              className="text-xs font-medium text-slate-600"
+              className="text-xs font-medium text-[#6B7280]"
             >
               Day (IST)
             </label>
@@ -131,10 +155,14 @@ export function ServicesByDaySection({
                   ? "Switch to “Day” to pick a calendar date"
                   : undefined
               }
-              className="rounded-lg border border-slate-200 bg-white/90 px-3 py-1.5 text-sm text-slate-800 shadow-sm outline-none ring-1 ring-slate-950/[0.04] transition-shadow duration-200 focus:border-violet-400 focus:ring-2 focus:ring-violet-200 disabled:cursor-not-allowed disabled:bg-slate-100/80"
+              className="rounded-lg border border-[#EAEFF5] bg-white px-3 py-2 text-sm text-[#0B1220] shadow-[0_1px_2px_rgba(0,0,0,0.03)] outline-none transition-[border-color,box-shadow] duration-150 ease-out focus:border-violet-300 focus:ring-2 focus:ring-violet-100/80 disabled:cursor-not-allowed disabled:bg-[#F9FAFB] disabled:text-[#94A3B8]"
               onChange={(e) => {
                 const v = e.target.value;
-                if (v) router.push(hrefForNav({ envRange: "day", day: v }));
+                if (v)
+                  navigate(
+                    hrefForNav(searchParams, { envRange: "day", day: v }),
+                    { scroll: false },
+                  );
               }}
             />
           </div>

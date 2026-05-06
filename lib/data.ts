@@ -1,93 +1,184 @@
 import "server-only";
 import { addDays, addWeeks, parseISO, startOfWeek, subDays } from "date-fns";
 import { formatInTimeZone, fromZonedTime, toZonedTime } from "date-fns-tz";
+import type { RowDataPacket } from "mysql2";
 import { EXPECTED_SERVICES } from "@/lib/healthServices";
-import { RECENT_RUNS_LIMIT } from "@/lib/limits";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import {
+  RUN_WINDOW_LIMITS,
+  TREND_DAILY_DAYS,
+  TREND_FAILURE_LOOKBACK_IST_DAYS,
+  TREND_WEEKLY_BUCKETS,
+} from "@/lib/limits";
+import {
+  getHealthCheckMysqlPool,
+  invalidateHealthCheckMysqlPool,
+  isRecoverableMysqlPoolError,
+  withHealthCheckMysqlRetry,
+} from "@/lib/mysql/server";
 import type {
   FailureWithRunTime,
   HealthCheckFailure,
+  HealthCheckRun,
   RunWithFailures,
 } from "@/lib/types";
 
 const IST = "Asia/Kolkata";
 
-const RUN_COLUMNS =
-  "id, created_at, checked_at_ist, build_number, build_url, jenkins_result, envs, summary";
+/** Chunk size for `WHERE run_id IN (...)` — balance packet size vs round-trips. */
+const FAILURE_RUN_ID_CHUNK = 350;
 
-const FAILURE_COLUMNS =
-  "id, run_id, env, service_name, http_code, detail";
+function logAndMaybeResetPool(context: string, e: unknown): void {
+  console.error(context, e);
+  if (isRecoverableMysqlPoolError(e)) {
+    invalidateHealthCheckMysqlPool();
+  }
+}
 
-/**
- * PostgREST `.in("run_id", …)` is often issued as GET; thousands of UUIDs blow past
- * URL / Node undici header limits → UND_ERR_HEADERS_OVERFLOW.
- */
-const FAILURE_RUN_ID_CHUNK = 60;
+function toIso(value: unknown): string {
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "string") return value;
+  try {
+    return new Date(String(value)).toISOString();
+  } catch {
+    return new Date().toISOString();
+  }
+}
+
+function parseEnvs(raw: unknown): string[] {
+  if (raw == null) return [];
+  if (Array.isArray(raw)) return raw.map(String);
+  if (typeof raw === "string") {
+    try {
+      const p = JSON.parse(raw) as unknown;
+      return Array.isArray(p) ? p.map(String) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function parseSummary(raw: unknown): Record<string, unknown> {
+  if (raw != null && typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+  if (typeof raw === "string") {
+    try {
+      const p = JSON.parse(raw) as unknown;
+      if (typeof p === "object" && p !== null && !Array.isArray(p)) {
+        return p as Record<string, unknown>;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return {};
+}
+
+function parseHttpCode(raw: unknown): number | null {
+  if (raw === null || raw === undefined || raw === "") return null;
+  const n = typeof raw === "number" ? raw : Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+function mapFailureRow(row: Record<string, unknown>): HealthCheckFailure {
+  return {
+    id: String(row.id ?? ""),
+    run_id: String(row.run_id ?? ""),
+    env: String(row.env ?? ""),
+    service_name: String(row.service_name ?? ""),
+    http_code: parseHttpCode(row.http_code),
+    detail:
+      row.detail === null || row.detail === undefined
+        ? null
+        : String(row.detail),
+  };
+}
+
+function mapRunRow(row: Record<string, unknown>): HealthCheckRun {
+  const bn = row.build_number;
+  return {
+    id: String(row.id ?? ""),
+    created_at: toIso(row.created_at),
+    checked_at_ist: String(row.checked_at_ist ?? ""),
+    build_url: String(row.build_url ?? ""),
+    jenkins_result: String(row.jenkins_result ?? ""),
+    build_number:
+      typeof bn === "number"
+        ? bn
+        : Number.isFinite(Number(bn))
+          ? Number(bn)
+          : 0,
+    envs: parseEnvs(row.envs),
+    summary: parseSummary(row.summary),
+  };
+}
 
 async function fetchFailuresForRunIds(
   runIds: string[],
 ): Promise<HealthCheckFailure[]> {
-  const supabase = getSupabaseServer();
-  if (!supabase || runIds.length === 0) return [];
+  if (!getHealthCheckMysqlPool() || runIds.length === 0) return [];
 
   const out: HealthCheckFailure[] = [];
   for (let i = 0; i < runIds.length; i += FAILURE_RUN_ID_CHUNK) {
     const chunk = runIds.slice(i, i + FAILURE_RUN_ID_CHUNK);
-    const { data: failures, error } = await supabase
-      .from("health_check_failures")
-      .select(FAILURE_COLUMNS)
-      .in("run_id", chunk);
-    if (error) {
-      console.error(
-        "fetchFailuresForRunIds:",
-        error.message,
-        error.code ?? "",
-      );
-      continue;
+    const placeholders = chunk.map(() => "?").join(", ");
+    try {
+      const rows = await withHealthCheckMysqlRetry(async (pool) => {
+        const [r] = await pool.query<RowDataPacket[]>(
+          `SELECT id, run_id, env, service_name, http_code, detail
+         FROM health_check_failures
+         WHERE run_id IN (${placeholders})`,
+          chunk,
+        );
+        return r;
+      });
+      for (const row of rows) {
+        out.push(mapFailureRow(row as Record<string, unknown>));
+      }
+    } catch (e) {
+      logAndMaybeResetPool("fetchFailuresForRunIds:", e);
     }
-    out.push(...((failures ?? []) as HealthCheckFailure[]));
   }
   return out;
 }
 
 export async function fetchRecentRunsWithFailures(
-  limit = RECENT_RUNS_LIMIT,
+  limit = RUN_WINDOW_LIMITS.week,
 ): Promise<RunWithFailures[]> {
-  const supabase = getSupabaseServer();
-  if (!supabase) return [];
+  if (!getHealthCheckMysqlPool()) return [];
 
-  const { data: runs, error: runsErr } = await supabase
-    .from("health_check_runs")
-    .select(RUN_COLUMNS)
-    .order("created_at", { ascending: false })
-    .limit(limit);
-
-  if (runsErr) {
-    console.error(
-      "fetchRecentRunsWithFailures runs:",
-      runsErr.message,
-      runsErr.code ?? "",
-      runsErr.details ?? "",
-    );
+  let runList: HealthCheckRun[] = [];
+  try {
+    runList = await withHealthCheckMysqlRetry(async (pool) => {
+      const [rows] = await pool.query<RowDataPacket[]>(
+        `SELECT id, created_at, checked_at_ist, build_number, build_url, jenkins_result, envs, summary
+       FROM health_check_runs
+       ORDER BY created_at DESC
+       LIMIT ?`,
+        [limit],
+      );
+      return rows.map((r) => mapRunRow(r as Record<string, unknown>));
+    });
+  } catch (e) {
+    logAndMaybeResetPool("fetchRecentRunsWithFailures runs:", e);
     return [];
   }
 
-  const runList = runs ?? [];
   const ids = runList.map((r) => r.id).filter(Boolean);
-
   const failuresByRun = new Map<string, HealthCheckFailure[]>();
   if (ids.length > 0) {
     const failures = await fetchFailuresForRunIds(ids);
     for (const row of failures) {
-      const rid = row.run_id as string;
+      const rid = row.run_id;
       const list = failuresByRun.get(rid) ?? [];
-      list.push(row as HealthCheckFailure);
+      list.push(row);
       failuresByRun.set(rid, list);
     }
   }
 
   return runList.map((run) => ({
-    ...(run as Omit<RunWithFailures, "health_check_failures">),
+    ...run,
     health_check_failures: failuresByRun.get(run.id) ?? [],
   }));
 }
@@ -118,8 +209,8 @@ function istDayKey(iso: string): string {
   return formatInTimeZone(parseISO(iso), IST, "yyyy-MM-dd");
 }
 
-/** Last `daysBack` calendar days labeled in IST (approximation from rolling UTC offsets). */
-function lastNDaysIST(daysBack: number): string[] {
+/** Last `daysBack` IST calendar days as `yyyy-MM-dd` (oldest first). */
+export function lastNDaysIST(daysBack: number): string[] {
   const days: string[] = [];
   const now = Date.now();
   for (let i = daysBack - 1; i >= 0; i--) {
@@ -182,6 +273,76 @@ export function aggregateDailyRunOutcomes(
       failed,
     };
   });
+}
+
+/**
+ * Build donut-series data from per-day totals (e.g. MySQL aggregate). Fills missing days with zeros.
+ */
+export function buildDailyRunOutcomesFromAggregates(
+  byDay: Map<string, { total: number; failed: number }>,
+  daysBack: number,
+): DailyRunOutcome[] {
+  const slots = lastNDaysIST(daysBack);
+  return slots.map((date) => {
+    const row = byDay.get(date);
+    const total = row?.total ?? 0;
+    const failed = Math.min(row?.failed ?? 0, total);
+    const success = total - failed;
+    return {
+      date,
+      label: formatInTimeZone(parseISO(`${date}T06:30:00.000Z`), IST, "MMM d"),
+      total,
+      success,
+      failed,
+    };
+  });
+}
+
+/** Per-IST-day run counts for outcome donuts (~1 month window). */
+export async function fetchRunOutcomeAggregatesByIstDay(
+  startIso: string,
+  endIso: string,
+): Promise<Map<string, { total: number; failed: number }>> {
+  const out = new Map<string, { total: number; failed: number }>();
+  if (!getHealthCheckMysqlPool()) return out;
+
+  try {
+    const rows = await withHealthCheckMysqlRetry(async (pool) => {
+      const [r] = await pool.query<RowDataPacket[]>(
+        `SELECT
+           DATE_FORMAT(
+             CONVERT_TZ(r.created_at, '+00:00', '+05:30'),
+             '%Y-%m-%d'
+           ) AS ist_day,
+           COUNT(*) AS total,
+           SUM(IF(COALESCE(fc.cnt, 0) > 0, 1, 0)) AS failed_runs
+         FROM health_check_runs r
+         LEFT JOIN (
+           SELECT run_id, COUNT(*) AS cnt
+           FROM health_check_failures
+           GROUP BY run_id
+         ) fc ON fc.run_id = r.id
+         WHERE r.created_at >= ? AND r.created_at <= ?
+         GROUP BY ist_day
+         ORDER BY ist_day ASC`,
+        [startIso, endIso],
+      );
+      return r;
+    });
+
+    for (const row of rows) {
+      const rec = row as Record<string, unknown>;
+      const day = String(rec.ist_day ?? "").slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+      const total = Number(rec.total ?? 0);
+      const failed = Number(rec.failed_runs ?? 0);
+      out.set(day, { total, failed: Math.min(failed, total) });
+    }
+  } catch (e) {
+    logAndMaybeResetPool("fetchRunOutcomeAggregatesByIstDay:", e);
+  }
+
+  return out;
 }
 
 /** IST Monday 00:00 → UTC instant for the week containing `instant` */
@@ -298,6 +459,25 @@ export function last7IstDaysUtcRange(): { startIso: string; endIso: string } {
   };
 }
 
+/** Rolling `n` IST calendar days ending today (inclusive). */
+export function lastNIstDaysUtcRange(
+  n: number,
+): { startIso: string; endIso: string } {
+  if (n < 1) {
+    const d = defaultIstDayString();
+    const r = istDayUtcRange(d);
+    return { startIso: r.startIso, endIso: r.endIso };
+  }
+  const istNow = toZonedTime(new Date(), IST);
+  const endDay = formatInTimeZone(istNow, IST, "yyyy-MM-dd");
+  const startLocal = subDays(istNow, n - 1);
+  const startDay = formatInTimeZone(startLocal, IST, "yyyy-MM-dd");
+  return {
+    startIso: istDayUtcRange(startDay).startIso,
+    endIso: istDayUtcRange(endDay).endIso,
+  };
+}
+
 export function envFailureRangeCaption(
   mode: EnvFailureRangeMode,
   day: string,
@@ -336,34 +516,69 @@ export async function fetchFailuresForCreatedAtRange(
   startIso: string,
   endIso: string,
 ): Promise<HealthCheckFailure[]> {
-  const supabase = getSupabaseServer();
-  if (!supabase) return [];
+  if (!getHealthCheckMysqlPool()) return [];
 
-  const { data: runs, error: runsErr } = await supabase
-    .from("health_check_runs")
-    .select("id")
-    .gte("created_at", startIso)
-    .lte("created_at", endIso);
-
-  if (runsErr) {
-    console.error(
-      "fetchFailuresForCreatedAtRange runs:",
-      runsErr.message,
-      runsErr.code ?? "",
-    );
+  try {
+    const rows = await withHealthCheckMysqlRetry(async (pool) => {
+      const [r] = await pool.query<RowDataPacket[]>(
+        `SELECT id FROM health_check_runs
+       WHERE created_at >= ? AND created_at <= ?`,
+        [startIso, endIso],
+      );
+      return r;
+    });
+    const ids = rows.map((r) => String((r as { id: string }).id)).filter(Boolean);
+    return fetchFailuresForRunIds(ids);
+  } catch (e) {
+    logAndMaybeResetPool("fetchFailuresForCreatedAtRange runs:", e);
     return [];
   }
+}
 
-  const ids = (runs ?? []).map((r) => r.id).filter(Boolean);
-  return fetchFailuresForRunIds(ids);
+const TREND_FAILURE_QUERY_ROW_CAP = 250_000;
+
+/**
+ * Failure rows with parent run `created_at` for area charts (one JOIN).
+ * Capped for safety on very large ranges.
+ */
+export async function fetchFailuresWithRunCreatedAtInUtcRange(
+  startIso: string,
+  endIso: string,
+): Promise<FailureWithRunTime[]> {
+  if (!getHealthCheckMysqlPool()) return [];
+
+  try {
+    const rows = await withHealthCheckMysqlRetry(async (pool) => {
+      const [r] = await pool.query<RowDataPacket[]>(
+        `SELECT f.id, f.run_id, f.env, f.service_name, f.http_code, f.detail,
+                r.created_at AS run_created_at
+         FROM health_check_failures f
+         INNER JOIN health_check_runs r ON r.id = f.run_id
+         WHERE r.created_at >= ? AND r.created_at <= ?
+         ORDER BY r.created_at DESC
+         LIMIT ?`,
+        [startIso, endIso, TREND_FAILURE_QUERY_ROW_CAP],
+      );
+      return r;
+    });
+    return rows.map((row) => {
+      const rec = row as Record<string, unknown>;
+      return {
+        ...mapFailureRow(rec),
+        run_created_at: toIso(rec.run_created_at),
+      };
+    });
+  } catch (e) {
+    logAndMaybeResetPool("fetchFailuresWithRunCreatedAtInUtcRange:", e);
+    return [];
+  }
 }
 
 const ALL_FAILURES_MAX = 150_000;
 
-/** All failure rows (paginated), newest-first via id desc optional — here ascending id for stable pages. */
+/** Paginated failure rows, ordered by parent run time then failure id (stable). */
 export async function fetchAllFailuresLimited(): Promise<HealthCheckFailure[]> {
-  const supabase = getSupabaseServer();
-  if (!supabase) return [];
+  if (!getHealthCheckMysqlPool()) return [];
 
   const pageSize = 1000;
   const out: HealthCheckFailure[] = [];
@@ -371,21 +586,28 @@ export async function fetchAllFailuresLimited(): Promise<HealthCheckFailure[]> {
 
   while (out.length < ALL_FAILURES_MAX) {
     const take = Math.min(pageSize, ALL_FAILURES_MAX - out.length);
-    const { data, error } = await supabase
-      .from("health_check_failures")
-      .select(FAILURE_COLUMNS)
-      .order("id", { ascending: true })
-      .range(offset, offset + take - 1);
-
-    if (error) {
-      console.error("fetchAllFailuresLimited:", error.message, error.code ?? "");
+    try {
+      const rows = await withHealthCheckMysqlRetry(async (pool) => {
+        const [r] = await pool.query<RowDataPacket[]>(
+          `SELECT f.id, f.run_id, f.env, f.service_name, f.http_code, f.detail
+         FROM health_check_failures f
+         INNER JOIN health_check_runs r ON r.id = f.run_id
+         ORDER BY r.created_at DESC, f.id ASC
+         LIMIT ? OFFSET ?`,
+          [take, offset],
+        );
+        return r;
+      });
+      if (rows.length === 0) break;
+      for (const row of rows) {
+        out.push(mapFailureRow(row as Record<string, unknown>));
+      }
+      if (rows.length < take) break;
+      offset += rows.length;
+    } catch (e) {
+      logAndMaybeResetPool("fetchAllFailuresLimited:", e);
       break;
     }
-    const rows = (data ?? []) as HealthCheckFailure[];
-    if (rows.length === 0) break;
-    out.push(...rows);
-    if (rows.length < take) break;
-    offset += rows.length;
   }
 
   return out;
@@ -404,6 +626,35 @@ export async function fetchFailuresForEnvRange(
     return fetchFailuresForCreatedAtRange(startIso, endIso);
   }
   return fetchAllFailuresLimited();
+}
+
+/** Parallel MySQL load for the main dashboard (runs + env-range failures + trend series). */
+export async function loadDashboardMysqlSnapshot(params: {
+  runsLimit: number;
+  envRange: EnvFailureRangeMode;
+  selectedIstDay: string;
+}): Promise<{
+  runs: RunWithFailures[];
+  envFailures: HealthCheckFailure[];
+  trendFailures: FailureWithRunTime[];
+  outcomeAggregates: Map<string, { total: number; failed: number }>;
+}> {
+  const trendRange = lastNIstDaysUtcRange(TREND_FAILURE_LOOKBACK_IST_DAYS);
+  const outcomeRange = lastNIstDaysUtcRange(TREND_DAILY_DAYS);
+  const [runs, envFailures, trendFailures, outcomeAggregates] =
+    await Promise.all([
+      fetchRecentRunsWithFailures(params.runsLimit),
+      fetchFailuresForEnvRange(params.envRange, params.selectedIstDay),
+      fetchFailuresWithRunCreatedAtInUtcRange(
+        trendRange.startIso,
+        trendRange.endIso,
+      ),
+      fetchRunOutcomeAggregatesByIstDay(
+        outcomeRange.startIso,
+        outcomeRange.endIso,
+      ),
+    ]);
+  return { runs, envFailures, trendFailures, outcomeAggregates };
 }
 
 /** Strip `:branch` from deployment-style names from Jenkins / DB */
