@@ -15,6 +15,7 @@ export const EXPECTED_SERVICES = [
   "fc-video-license-vertx",
   "fc-transcode",
   "user-nexus",
+  "user-odyssey",
   "fc-salus-vertx",
   "fc-gringotts-vertx",
   "fc-coupon",

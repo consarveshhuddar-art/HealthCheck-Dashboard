@@ -25,3 +25,40 @@ export type FailureWithRunTime = HealthCheckFailure & {
 export type RunWithFailures = HealthCheckRun & {
   health_check_failures: HealthCheckFailure[] | null;
 };
+
+export type CredentialExpiryStatus = "active" | "resolved" | "stopped";
+
+export type CredentialExpiryRecord = {
+  id: string;
+  credential_name: string;
+  platform: string;
+  ticket_name: string;
+  ticket_link: string | null;
+  created_date: string;
+  created_by: string;
+  renewed_by: string | null;
+  expiry_date: string;
+  status: CredentialExpiryStatus;
+  resolved_at: string | null;
+  supersedes_id: string | null;
+  created_at: string;
+};
+
+export type CredentialExpiryGroup = {
+  credential_name: string;
+  platform: string;
+  active: CredentialExpiryRecord | null;
+  resolved: CredentialExpiryRecord[];
+};
+
+export type CredentialAlertCounts = {
+  expiringSoon: number;
+  expired: number;
+  totalActive: number;
+};
+
+export type CredentialSortMode =
+  | "created_desc"
+  | "created_asc"
+  | "expiry_desc"
+  | "expiry_asc";

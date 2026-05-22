@@ -1,9 +1,14 @@
 import { Suspense } from "react";
 import { ChartsSection } from "@/components/ChartsSection";
+import { DashboardHeader } from "@/components/DashboardHeader";
 import { RunsTable } from "@/components/RunsTable";
 import { RunsWindowControl } from "@/components/RunsWindowControl";
 import { ServicesByDaySection } from "@/components/ServicesByDaySection";
 import { StatCard } from "@/components/StatCard";
+import {
+  getCredentialAlertCounts,
+  isCredentialExpiryTableAvailable,
+} from "@/lib/credentials";
 import { getOrSetDashboardMysqlCache } from "@/lib/dashboard-cache";
 import {
   aggregateDailyFailures,
@@ -140,35 +145,33 @@ export default async function Home({
 
   const runsHint = `Newest first · ${runDataWindowLabel(runDataWindow)} (cap ${runsLimit})`;
 
+  const credTableReady = await isCredentialExpiryTableAvailable();
+  const credentialAlerts = credTableReady
+    ? await getCredentialAlertCounts()
+    : null;
+
   return (
     <div className={`${dashboardUi.pageShell} pb-8 sm:pb-10`}>
       <div className={dashboardUi.content}>
-        <header className={`${dashboardUi.pageHeader} flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between`}>
-          <div className="min-w-0">
-            <p className="text-[9px] font-medium uppercase tracking-[0.14em] text-[#94A3B8]">
-              Infrastructure
-            </p>
-            <h1 className="mt-0.5 text-xl font-bold tracking-[-0.02em] text-[#0B1220] sm:text-[1.375rem]">
-              Health check dashboard
-            </h1>
-            <p className="mt-1.5 max-w-3xl text-[11px] leading-relaxed text-[#64748B]/85">
-              Jenkins health-check runs stored in MySQL (test DB): pass/fail per service,
-              failure trends, and env-level drill-down. Chart data reloads from MySQL if
-              older than 2 minutes.
-            </p>
-          </div>
-          <Suspense
-            fallback={
-              <div
-                className="h-9 shrink-0 self-start rounded-[10px] bg-[#F9FAFB] sm:self-center"
-                style={{ width: "11rem" }}
-                aria-hidden
-              />
-            }
-          >
-            <RunsWindowControl currentWindow={runDataWindow} />
-          </Suspense>
-        </header>
+        <DashboardHeader
+          eyebrow="Infrastructure"
+          title="Health check dashboard"
+          description="Jenkins health-check runs stored in MySQL (test DB): pass/fail per service, failure trends, and env-level drill-down. Chart data reloads from MySQL if older than 2 minutes."
+          alerts={credentialAlerts}
+          trailing={
+            <Suspense
+              fallback={
+                <div
+                  className="h-9 rounded-[10px] bg-[#F9FAFB]"
+                  style={{ width: "11rem" }}
+                  aria-hidden
+                />
+              }
+            >
+              <RunsWindowControl currentWindow={runDataWindow} />
+            </Suspense>
+          }
+        />
 
         <div className={`${dashboardUi.statGrid} mb-5`}>
           <StatCard
