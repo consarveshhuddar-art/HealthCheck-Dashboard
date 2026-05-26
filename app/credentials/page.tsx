@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { MysqlConnectionErrorBanner } from "@/components/MysqlConnectionErrorBanner";
 import { CredentialsExpirySection } from "@/components/CredentialsExpirySection";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { defaultIstDayString } from "@/lib/data";
@@ -13,7 +14,7 @@ import {
   sortCredentialGroups,
 } from "@/lib/credentials";
 import { dashboardUi } from "@/lib/dashboardUi";
-import { isHealthCheckMysqlConfigured } from "@/lib/mysql/server";
+import { isHealthCheckMysqlConfigured, isHealthCheckMysqlCircuitOpen } from "@/lib/mysql/server";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +54,22 @@ export default async function CredentialsPage({
 
   const tableReady = await isCredentialExpiryTableAvailable();
   if (!tableReady) {
+    if (isHealthCheckMysqlCircuitOpen()) {
+      return (
+        <div className={`${dashboardUi.pageShell} pb-8 sm:pb-10`}>
+          <div className={dashboardUi.content}>
+            <DashboardHeader
+              eyebrow="Operations"
+              title="Credential expiry"
+              description="Track renewal dates and Jira (or other) tickets for infrastructure credentials."
+              alerts={null}
+            />
+            <MysqlConnectionErrorBanner />
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className={`${dashboardUi.pageShell} pb-8 sm:pb-10`}>
         <div className={dashboardUi.content}>

@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { MysqlConnectionErrorBanner } from "@/components/MysqlConnectionErrorBanner";
 import { ChartsSection } from "@/components/ChartsSection";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { RunsTable } from "@/components/RunsTable";
@@ -67,7 +68,8 @@ export default async function Home({
   const runDataWindow = parseRunDataWindow(sp.window);
   const runsLimit = runLimitForWindow(runDataWindow);
 
-  const { runs, envFailures, trendFailures, outcomeAggregates } = dbReady
+  const { runs, envFailures, trendFailures, outcomeAggregates, dbConnectionError } =
+    dbReady
     ? await getOrSetDashboardMysqlCache(
         `dash:mysql:v1:${runsLimit}:${envRange}:${selectedDay}`,
         () =>
@@ -82,6 +84,7 @@ export default async function Home({
         envFailures: [] as HealthCheckFailure[],
         trendFailures: [] as FailureWithRunTime[],
         outcomeAggregates: new Map<string, { total: number; failed: number }>(),
+        dbConnectionError: false,
       };
 
   const failures = flattenFailuresWithRunTime(runs);
@@ -172,6 +175,10 @@ export default async function Home({
             </Suspense>
           }
         />
+
+        {dbConnectionError ? (
+          <MysqlConnectionErrorBanner className="mb-5" />
+        ) : null}
 
         <div className={`${dashboardUi.statGrid} mb-5`}>
           <StatCard

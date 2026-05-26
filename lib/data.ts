@@ -12,6 +12,7 @@ import {
 import {
   getHealthCheckMysqlPool,
   invalidateHealthCheckMysqlPool,
+  isHealthCheckMysqlReachable,
   isRecoverableMysqlPoolError,
   withHealthCheckMysqlRetry,
 } from "@/lib/mysql/server";
@@ -638,7 +639,18 @@ export async function loadDashboardMysqlSnapshot(params: {
   envFailures: HealthCheckFailure[];
   trendFailures: FailureWithRunTime[];
   outcomeAggregates: Map<string, { total: number; failed: number }>;
+  dbConnectionError: boolean;
 }> {
+  if (!(await isHealthCheckMysqlReachable())) {
+    return {
+      runs: [],
+      envFailures: [],
+      trendFailures: [],
+      outcomeAggregates: new Map(),
+      dbConnectionError: true,
+    };
+  }
+
   const trendRange = lastNIstDaysUtcRange(TREND_FAILURE_LOOKBACK_IST_DAYS);
   const outcomeRange = lastNIstDaysUtcRange(TREND_DAILY_DAYS);
   const [runs, envFailures, trendFailures, outcomeAggregates] =
@@ -654,7 +666,13 @@ export async function loadDashboardMysqlSnapshot(params: {
         outcomeRange.endIso,
       ),
     ]);
-  return { runs, envFailures, trendFailures, outcomeAggregates };
+  return {
+    runs,
+    envFailures,
+    trendFailures,
+    outcomeAggregates,
+    dbConnectionError: false,
+  };
 }
 
 /** Strip `:branch` from deployment-style names from Jenkins / DB */
