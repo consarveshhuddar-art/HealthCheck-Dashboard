@@ -321,6 +321,7 @@ export type PrE2eTestHistoryRow = {
   test_name: string;
   created_at: string;
   service_repo: string;
+  git_author: string;
   e2e_build_number: number;
   status: string;
   error_message: string | null;
@@ -330,6 +331,16 @@ export type PrE2eTestHistoryRow = {
   e2e_jenkins_result: string;
 };
 
+export type PrE2eSearchResultFilters = {
+  service?: string;
+  author?: string;
+};
+
+const TEST_HISTORY_SELECT = `f.id, f.run_id, f.test_name, f.status, f.error_message, f.tags, f.classification,
+  r.created_at, r.service_repo, r.e2e_build_number,
+  r.pass_rate_pct, r.e2e_jenkins_result,
+  COALESCE(NULLIF(TRIM(r.git_author), ''), NULLIF(TRIM(r.git_username), ''), 'unknown') AS git_author`;
+
 function mapTestHistoryRow(row: RowDataPacket): PrE2eTestHistoryRow {
   return {
     id: String(row.id),
@@ -337,6 +348,7 @@ function mapTestHistoryRow(row: RowDataPacket): PrE2eTestHistoryRow {
     test_name: String(row.test_name ?? ""),
     created_at: toIso(row.created_at),
     service_repo: String(row.service_repo ?? ""),
+    git_author: String(row.git_author ?? "unknown"),
     e2e_build_number: num(row.e2e_build_number),
     status: String(row.status ?? ""),
     error_message: row.error_message ? String(row.error_message) : null,
@@ -348,19 +360,38 @@ function mapTestHistoryRow(row: RowDataPacket): PrE2eTestHistoryRow {
 }
 
 /** Failure rows for a test name (exact match on test_name / test_name_full). */
+function searchFilterSql(filters?: PrE2eSearchResultFilters): {
+  sql: string;
+  params: string[];
+} {
+  const parts: string[] = [];
+  const params: string[] = [];
+  if (filters?.service?.trim()) {
+    parts.push(" AND LOWER(r.service_repo) LIKE ?");
+    params.push(`%${escapeMysqlLike(filters.service.trim().toLowerCase())}%`);
+  }
+  if (filters?.author?.trim()) {
+    parts.push(
+      ` AND LOWER(COALESCE(NULLIF(TRIM(r.git_author), ''), NULLIF(TRIM(r.git_username), ''), 'unknown')) LIKE ?`,
+    );
+    params.push(`%${escapeMysqlLike(filters.author.trim().toLowerCase())}%`);
+  }
+  return { sql: parts.join(""), params };
+}
+
 export async function loadPrE2eTestHistory(
   testName: string,
   limit = 100,
+  filters?: PrE2eSearchResultFilters,
 ): Promise<PrE2eTestHistoryRow[]> {
   const term = testName.trim();
   if (!term) return [];
 
   return withHealthCheckMysqlRetry(async (pool) => {
     const like = `%${escapeMysqlLike(term)}%`;
+    const ff = searchFilterSql(filters);
     const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT f.id, f.run_id, f.test_name, f.status, f.error_message, f.tags, f.classification,
-        r.created_at, r.service_repo, r.e2e_build_number,
-        r.pass_rate_pct, r.e2e_jenkins_result
+      `SELECT ${TEST_HISTORY_SELECT}
        FROM pr_e2e_failures f
        INNER JOIN pr_e2e_runs r ON r.id = f.run_id
        WHERE r.is_release_pipeline = 0
@@ -369,12 +400,36 @@ export async function loadPrE2eTestHistory(
            OR f.test_name_full = ?
            OR f.test_name LIKE ?
            OR f.test_name_full LIKE ?
-         )
+         )${ff.sql}
        ORDER BY r.created_at DESC
        LIMIT ?`,
-      [term, term, like, like, limit],
+      [term, term, like, like, ...ff.params, limit],
     );
     return rows.map(mapTestHistoryRow);
+  });
+}
+
+export type PrE2eTagSearchResult = {
+  rows: PrE2eTestHistoryRow[];
+  totalCount: number;
+  facets: { services: string[]; authors: string[] };
+};
+
+function applySearchResultFilters(
+  rows: PrE2eTestHistoryRow[],
+  filters?: PrE2eSearchResultFilters,
+): PrE2eTestHistoryRow[] {
+  if (!filters?.service?.trim() && !filters?.author?.trim()) return rows;
+  const serviceNeedle = filters.service?.trim().toLowerCase() ?? "";
+  const authorNeedle = filters.author?.trim().toLowerCase() ?? "";
+  return rows.filter((row) => {
+    if (serviceNeedle && !row.service_repo.toLowerCase().includes(serviceNeedle)) {
+      return false;
+    }
+    if (authorNeedle && !row.git_author.toLowerCase().includes(authorNeedle)) {
+      return false;
+    }
+    return true;
   });
 }
 
@@ -382,9 +437,12 @@ export async function loadPrE2eTestHistory(
 export async function loadPrE2eFailuresByTags(
   tagQuery: string,
   limit = 150,
-): Promise<PrE2eTestHistoryRow[]> {
+  filters?: PrE2eSearchResultFilters,
+): Promise<PrE2eTagSearchResult> {
   const required = parseTagSearchQuery(tagQuery);
-  if (!required.length) return [];
+  if (!required.length) {
+    return { rows: [], totalCount: 0, facets: { services: [], authors: [] } };
+  }
 
   return withHealthCheckMysqlRetry(async (pool) => {
     const tagClauses = required
@@ -395,9 +453,7 @@ export async function loadPrE2eFailuresByTags(
     );
 
     const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT f.id, f.run_id, f.test_name, f.status, f.error_message, f.tags, f.classification,
-        r.created_at, r.service_repo, r.e2e_build_number,
-        r.pass_rate_pct, r.e2e_jenkins_result
+      `SELECT ${TEST_HISTORY_SELECT}
        FROM pr_e2e_failures f
        INNER JOIN pr_e2e_runs r ON r.id = f.run_id
        WHERE r.is_release_pipeline = 0
@@ -410,10 +466,20 @@ export async function loadPrE2eFailuresByTags(
       [...likeParams, Math.min(limit * 3, 500)],
     );
 
-    return rows
+    const all = rows
       .map(mapTestHistoryRow)
-      .filter((row) => failureHasAllTags(row.tags, required))
-      .slice(0, limit);
+      .filter((row) => failureHasAllTags(row.tags, required));
+
+    const services = [...new Set(all.map((r) => r.service_repo).filter(Boolean))].sort();
+    const authors = [...new Set(all.map((r) => r.git_author).filter((a) => a !== "unknown"))].sort();
+
+    const filtered = applySearchResultFilters(all, filters);
+
+    return {
+      rows: filtered.slice(0, limit),
+      totalCount: all.length,
+      facets: { services, authors },
+    };
   });
 }
 

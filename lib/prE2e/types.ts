@@ -223,6 +223,17 @@ export function effectiveFailureCount(
   return 0;
 }
 
+/** Display name for run author (git_author, else git_username). */
+export function runGitAuthor(
+  run: Pick<PrE2eRun, "git_author" | "git_username">,
+): string {
+  const a = run.git_author?.trim();
+  if (a) return a;
+  const u = run.git_username?.trim();
+  if (u && u !== "NA") return u;
+  return "unknown";
+}
+
 export function testHistoryHref(testName: string): string {
   return `/pr-checks/tests?name=${encodeURIComponent(testName)}`;
 }
