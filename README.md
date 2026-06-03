@@ -36,6 +36,7 @@ Jenkins ingest uses the same database via credential `HC_MYSQL_PASS_RAW` in `FC-
 ---
 
 ## Architecture
+<img width="1224" height="1600" alt="image" src="https://github.com/user-attachments/assets/7ee0a6ad-44ae-4882-bbe9-784dc16141f3" />
 
 ```
 Service PR pipelines (fc-core, fc-video-vertx, fc-gql, …)
