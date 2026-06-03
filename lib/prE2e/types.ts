@@ -155,6 +155,15 @@ export type PrE2eFingerprintRow = {
 
 export type PrE2eIngestPoint = { label: string; ok: number; error: number; skipped: number };
 
+/** Ingested E2E runs in rolling windows (each build counts separately). */
+export type PrE2ePrRaisedSummary = {
+  runs7d: number;
+  runs30d: number;
+  runs90d: number;
+};
+
+export type PrE2ePrRaisedPoint = { label: string; runs: number };
+
 export type PrE2eIngestError = {
   id: string;
   created_at: string;

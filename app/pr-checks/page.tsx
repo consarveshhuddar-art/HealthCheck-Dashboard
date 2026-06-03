@@ -25,7 +25,7 @@ export default async function PrChecksPage() {
     dbReady && credTableReady ? await getCredentialAlertCounts() : null;
 
   const snapshot = dbReady
-    ? await getOrSetDashboardMysqlCache(`pr-e2e:base:v1:${pipeline}`, () =>
+    ? await getOrSetDashboardMysqlCache(`pr-e2e:base:v3:${pipeline}`, () =>
         loadPrE2eDashboardBase(pipeline, 80),
       )
     : null;

@@ -12,6 +12,8 @@ import type {
   PrE2eNamedCount,
   PrE2ePassRatePoint,
   PrE2ePipelineFilter,
+  PrE2ePrRaisedPoint,
+  PrE2ePrRaisedSummary,
   PrE2eServiceHealth,
   PrE2eTestCountPoint,
   PrE2eVolumePoint,
@@ -54,6 +56,51 @@ function pipelineClause(
 }
 
 const PASS_EXPR = `(COALESCE(r.failed_count,0) + COALESCE(r.broken_count,0) = 0 AND UPPER(r.e2e_jenkins_result) = 'SUCCESS')`;
+
+export async function loadPrRaisedSummary(
+  filter: PrE2ePipelineFilter,
+): Promise<PrE2ePrRaisedSummary> {
+  return withHealthCheckMysqlRetry(async (pool) => {
+    const pc = pipelineClause(filter);
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT
+        SUM(CASE WHEN r.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS runs_7d,
+        SUM(CASE WHEN r.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS runs_30d,
+        SUM(CASE WHEN r.created_at >= DATE_SUB(NOW(), INTERVAL 90 DAY) THEN 1 ELSE 0 END) AS runs_90d
+       FROM pr_e2e_runs r
+       WHERE r.created_at >= DATE_SUB(NOW(), INTERVAL 90 DAY)${pc.sql}`,
+      pc.params,
+    );
+    const row = rows[0] ?? {};
+    return {
+      runs7d: num(row.runs_7d),
+      runs30d: num(row.runs_30d),
+      runs90d: num(row.runs_90d),
+    };
+  });
+}
+
+export async function loadPrRaisedTrend(
+  filter: PrE2ePipelineFilter,
+  days = 90,
+): Promise<PrE2ePrRaisedPoint[]> {
+  return withHealthCheckMysqlRetry(async (pool) => {
+    const since = subDays(new Date(), days);
+    const pc = pipelineClause(filter);
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT DATE(r.created_at) AS d, COUNT(*) AS runs
+       FROM pr_e2e_runs r
+       WHERE r.created_at >= ?${pc.sql}
+       GROUP BY DATE(r.created_at)
+       ORDER BY d ASC`,
+      [since, ...pc.params],
+    );
+    return rows.map((row) => ({
+      label: formatDayLabel(row.d),
+      runs: num(row.runs),
+    }));
+  });
+}
 
 export async function loadPrE2ePeriodStats(
   filter: PrE2ePipelineFilter,

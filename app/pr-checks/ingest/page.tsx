@@ -1,5 +1,7 @@
 import { MysqlConnectionErrorBanner } from "@/components/MysqlConnectionErrorBanner";
 import { PrE2eIngestTrendPanel } from "@/components/prE2e/PrE2eAnalyticsRangeSections";
+import { PrE2eOverviewSection } from "@/components/prE2e/PrE2eOverviewSection";
+import { PrE2ePrRaisedPanel } from "@/components/prE2e/PrE2ePrRaisedPanel";
 import {
   PrE2eIngestErrorsTable,
   PrE2eNamedCountTable,
@@ -27,12 +29,18 @@ export default async function PrChecksIngestPage() {
     dbReady && credTableReady ? await getCredentialAlertCounts() : null;
 
   const data = dbReady
-    ? await getOrSetDashboardMysqlCache("pr-e2e:ingest-base:v1", () =>
+    ? await getOrSetDashboardMysqlCache("pr-e2e:ingest-base:v2", () =>
         loadPrE2eDashboardBase(PR_E2E_PIPELINE_FILTER, 5),
       )
     : null;
 
   const lastOk = data?.lastSuccessfulIngest;
+  const prRaisedSummary = data?.prRaisedSummary ?? {
+    runs7d: 0,
+    runs30d: 0,
+    runs90d: 0,
+  };
+  const prRaisedTrend = data?.prRaisedTrend ?? [];
   const errorCount =
     data?.ingestStatus.find((s) => s.name === "error")?.count ?? 0;
 
@@ -63,6 +71,14 @@ export default async function PrChecksIngestPage() {
             ? new Date(lastOk).toISOString().replace("T", " ").slice(0, 19)
             : "None recorded — dashboard may be stale"}
         </p>
+
+        <PrE2eOverviewSection
+          title="Run volume"
+          description="Total ingested E2E builds — each Jenkins build counts, including re-runs on the same PR."
+          className="mt-0 mb-4"
+        >
+          <PrE2ePrRaisedPanel summary={prRaisedSummary} trend={prRaisedTrend} />
+        </PrE2eOverviewSection>
 
         <div className="grid gap-4 lg:grid-cols-5">
           <div className="lg:col-span-3">

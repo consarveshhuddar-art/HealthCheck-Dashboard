@@ -15,6 +15,8 @@ import {
   loadPrE2eDurationTrend,
   loadPrE2ePassRateTrend,
   loadPrE2ePeriodStats,
+  loadPrRaisedSummary,
+  loadPrRaisedTrend,
   loadPrE2eTestCountTrend,
   loadPrE2eVolumeTrend,
   loadRecentIngestErrors,
@@ -30,7 +32,11 @@ import {
   TREND_DAYS,
 } from "@/lib/prE2e/analytics";
 import { PR_E2E_ANALYTICS_MAX_ROWS } from "@/lib/prE2e/limits";
-import { fillDailyTrend, fillPassRateTrend } from "@/lib/prE2e/trendFill";
+import {
+  fillDailyTrend,
+  fillPassRateTrend,
+  fillPrRaisedTrend,
+} from "@/lib/prE2e/trendFill";
 import { isHealthCheckMysqlReachable, withHealthCheckMysqlRetry } from "@/lib/mysql/server";
 import type {
   PrE2eDailyPoint,
@@ -43,6 +49,8 @@ import type {
   PrE2eNamedCount,
   PrE2eOverviewStats,
   PrE2ePassRatePoint,
+  PrE2ePrRaisedPoint,
+  PrE2ePrRaisedSummary,
   PrE2ePipelineFilter,
   PrE2eRun,
   PrE2eRunWithFailures,
@@ -580,6 +588,8 @@ export type PrE2eFullDashboard = {
   lastSuccessfulIngest: string | null;
   triggerUnknownPct: number | null;
   moduleUnknownPct: number | null;
+  prRaisedSummary: PrE2ePrRaisedSummary;
+  prRaisedTrend: PrE2ePrRaisedPoint[];
   dbConnectionError: boolean;
 };
 
@@ -617,6 +627,8 @@ export async function loadPrE2eDashboardBase(
     lastSuccessfulIngest: null,
     triggerUnknownPct: null,
     moduleUnknownPct: null,
+    prRaisedSummary: { runs7d: 0, runs30d: 0, runs90d: 0 },
+    prRaisedTrend: [],
     dbConnectionError: true,
   };
 
@@ -639,6 +651,8 @@ export async function loadPrE2eDashboardBase(
     triggerUnknownPct,
     moduleUnknownPct,
     fingerprints,
+    prRaisedSummary,
+    prRaisedTrendRaw,
   ] = await Promise.all([
     loadPrE2eRuns(runsLimit, filter),
     loadPrE2eStability(undefined, 50),
@@ -656,7 +670,11 @@ export async function loadPrE2eDashboardBase(
     loadTriggerUnknownShare(filter),
     loadModuleUnknownShare(filter),
     loadErrorFingerprints(filter, 30, PR_E2E_ANALYTICS_MAX_ROWS),
+    loadPrRaisedSummary(filter),
+    loadPrRaisedTrend(filter, 90),
   ]);
+
+  const prRaisedTrend = fillPrRaisedTrend(prRaisedTrendRaw, 90);
 
   const passRuns = runs.filter(runPasses).length;
   const failRuns = runs.length - passRuns;
@@ -700,6 +718,8 @@ export async function loadPrE2eDashboardBase(
     lastSuccessfulIngest,
     triggerUnknownPct,
     moduleUnknownPct,
+    prRaisedSummary,
+    prRaisedTrend,
     stats: {
       ...period,
       recentRuns: runs.length,
@@ -750,6 +770,8 @@ export async function loadPrE2eFullDashboard(
     lastSuccessfulIngest: null,
     triggerUnknownPct: null,
     moduleUnknownPct: null,
+    prRaisedSummary: { runs7d: 0, runs30d: 0, runs90d: 0 },
+    prRaisedTrend: [],
     dbConnectionError: true,
   };
 
@@ -784,6 +806,8 @@ export async function loadPrE2eFullDashboard(
     lastSuccessfulIngest,
     triggerUnknownPct,
     moduleUnknownPct,
+    prRaisedSummary,
+    prRaisedTrendRaw,
   ] = await Promise.all([
     loadPrE2eRuns(runsLimit, filter),
     loadPrE2eStability(undefined, 50),
@@ -813,9 +837,12 @@ export async function loadPrE2eFullDashboard(
     loadLastSuccessfulIngest(),
     loadTriggerUnknownShare(filter),
     loadModuleUnknownShare(filter),
+    loadPrRaisedSummary(filter),
+    loadPrRaisedTrend(filter, 90),
   ]);
 
   const filledPassRate = fillPassRateTrend(passRateTrend, trendDays);
+  const prRaisedTrend = fillPrRaisedTrend(prRaisedTrendRaw, 90);
   const filledDaily = fillDailyTrend(daily, trendDays);
 
   const passRuns = runs.filter(runPasses).length;
@@ -870,6 +897,8 @@ export async function loadPrE2eFullDashboard(
     lastSuccessfulIngest,
     triggerUnknownPct,
     moduleUnknownPct,
+    prRaisedSummary,
+    prRaisedTrend,
     stats: {
       ...period,
       recentRuns: runs.length,

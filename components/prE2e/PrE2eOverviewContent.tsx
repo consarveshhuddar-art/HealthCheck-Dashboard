@@ -14,8 +14,11 @@ import { PrE2eOverviewSection } from "@/components/prE2e/PrE2eOverviewSection";
 import { PrE2eStabilityTable } from "@/components/prE2e/PrE2eStabilityTable";
 import { StatCard } from "@/components/StatCard";
 import { dashboardUi } from "@/lib/dashboardUi";
-import type { PrE2eOverviewStats, PrE2eStabilityRow } from "@/lib/prE2e/types";
-import type { PrE2eNamedCount } from "@/lib/prE2e/types";
+import type {
+  PrE2eNamedCount,
+  PrE2eOverviewStats,
+  PrE2eStabilityRow,
+} from "@/lib/prE2e/types";
 
 export function PrE2eOverviewContent({
   stats,

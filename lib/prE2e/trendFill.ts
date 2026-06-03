@@ -54,3 +54,13 @@ export function fillDailyTrend<
       byLabel.get(label) ?? ({ label, passed: 0, failed: 0 } as T),
   );
 }
+
+export function fillPrRaisedTrend<
+  T extends { label: string; runs: number },
+>(points: T[], days: number): T[] {
+  const labels = trendDayLabels(days);
+  const byLabel = new Map(points.map((p) => [p.label, p]));
+  return labels.map(
+    (label) => byLabel.get(label) ?? ({ label, runs: 0 } as T),
+  );
+}
