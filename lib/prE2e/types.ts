@@ -64,6 +64,7 @@ export type PrE2eRunWithFailures = PrE2eRun & {
   failure_count: number;
 };
 
+/** Aggregated from pr_e2e_test_executions (30d). Column names are legacy DB fields. */
 export type PrE2eStabilityRow = {
   id: string;
   computed_at: string;
@@ -71,9 +72,13 @@ export type PrE2eStabilityRow = {
   env_suffix: string;
   test_name: string;
   module: string | null;
+  /** Total executions (passed + failed + broken) in window. */
   total_runs: number;
+  /** Failed + broken executions. */
   runs_with_failure: number;
+  /** Passed executions. */
   runs_without_failure: number;
+  /** Failure rate % = runs_with_failure / total_runs. */
   flaky_rate_pct: number;
   stability_label: "flaky" | "failing" | "stable";
   last_seen_at: string | null;

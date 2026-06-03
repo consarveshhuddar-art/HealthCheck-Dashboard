@@ -10,7 +10,7 @@ import {
   getCredentialAlertCounts,
   isCredentialExpiryTableAvailable,
 } from "@/lib/credentials";
-import { getOrSetDashboardMysqlCache } from "@/lib/dashboard-cache";
+import { getOrSetPrE2eMysqlCache } from "@/lib/dashboard-cache";
 import { dashboardUi } from "@/lib/dashboardUi";
 import { loadStabilityFirstSeen } from "@/lib/prE2e/analytics";
 import { loadPrE2eFullDashboard, loadPrE2eStability } from "@/lib/prE2e/data";
@@ -45,26 +45,33 @@ export default async function PrChecksFlakyPage({
   const alerts =
     dbReady && credTableReady ? await getCredentialAlertCounts() : null;
 
-  const [{ rows, dbConnectionError }, summary, firstSeenMap] = dbReady
-    ? await Promise.all([
-        getOrSetDashboardMysqlCache(
-          `pr-e2e:stability:v2:${label ?? "all"}`,
-          async () => {
-            if (!(await isHealthCheckMysqlReachable())) {
-              return { rows: [], dbConnectionError: true };
-            }
-            return {
-              rows: await loadPrE2eStability(label, PR_E2E_STABILITY_TABLE_MAX_ROWS),
-              dbConnectionError: false,
-            };
-          },
-        ),
-        getOrSetDashboardMysqlCache("pr-e2e:flaky-summary:v1", () =>
+  const flakyPage = dbReady
+    ? await getOrSetPrE2eMysqlCache(`pr-e2e:flaky:v1:${label ?? "all"}`, async () => {
+        if (!(await isHealthCheckMysqlReachable())) {
+          return {
+            rows: [] as Awaited<ReturnType<typeof loadPrE2eStability>>,
+            dbConnectionError: true,
+            summary: null,
+            firstSeen: {} as Record<string, string>,
+          };
+        }
+        const [rows, summary, firstSeenMap] = await Promise.all([
+          loadPrE2eStability(label, PR_E2E_STABILITY_TABLE_MAX_ROWS),
           loadPrE2eFullDashboard(PR_E2E_PIPELINE_FILTER, 5, 30),
-        ),
-        loadStabilityFirstSeen([]),
-      ])
-    : [{ rows: [], dbConnectionError: false }, null, new Map<string, string>()];
+          loadStabilityFirstSeen([]),
+        ]);
+        const firstSeen: Record<string, string> = {};
+        for (const [k, v] of firstSeenMap) firstSeen[k] = v;
+        return { rows, dbConnectionError: false, summary, firstSeen };
+      })
+    : {
+        rows: [] as Awaited<ReturnType<typeof loadPrE2eStability>>,
+        dbConnectionError: false,
+        summary: null,
+        firstSeen: {} as Record<string, string>,
+      };
+
+  const { rows, dbConnectionError, summary, firstSeen } = flakyPage;
 
   const counts = {
     flaky: summary?.stabilityDist.find((s) => s.name === "flaky")?.count ?? 0,
@@ -73,9 +80,6 @@ export default async function PrChecksFlakyPage({
   };
   const total = counts.flaky + counts.failing + counts.stable;
   const hasMix = (summary?.stabilityDist.length ?? 0) > 0;
-
-  const firstSeen: Record<string, string> = {};
-  for (const [k, v] of firstSeenMap) firstSeen[k] = v;
 
   const tableTotal = label ? counts[label] : total;
   const tableDescription =
@@ -93,16 +97,16 @@ export default async function PrChecksFlakyPage({
         <DashboardHeader
           eyebrow="PR E2E"
           title="Test stability (30 days)"
-          description="Flaky: failed in ≥2 builds with ≥1 clean build. Failing: failed every build (≥2). Stable: everything else in the batch."
+          description="30-day failure rate from per-test executions. Stable under 5%, flaky 5–80%, failing 80% or above (needs at least 5 executions). Run refresh-pr-e2e-stability after backfill."
           alerts={alerts}
           showCredentialsNav={false}
         />
 
         <div className={`mb-4 ${dashboardUi.statGrid} lg:grid-cols-4`}>
           <StatCard title="Tracked tests" value={total} hint="30-day batch" accent="slate" />
-          <StatCard title="Flaky" value={counts.flaky} hint="Intermittent failures" accent="amber" />
-          <StatCard title="Failing" value={counts.failing} hint="Fails every sampled build" accent="rose" />
-          <StatCard title="Stable" value={counts.stable} hint="Passes or single failure" accent="emerald" />
+          <StatCard title="Flaky" value={counts.flaky} hint="5–80% failure rate" accent="amber" />
+          <StatCard title="Failing" value={counts.failing} hint="≥80% failure rate" accent="rose" />
+          <StatCard title="Stable" value={counts.stable} hint="Under 5% fail rate (or under 5 samples)" accent="emerald" />
         </div>
 
         <div className={`mb-4 ${dashboardUi.panel}`}>

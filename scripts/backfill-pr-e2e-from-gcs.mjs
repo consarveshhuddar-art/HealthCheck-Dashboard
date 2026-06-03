@@ -8,6 +8,17 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import mysql from "mysql2/promise";
+import {
+  collectExecutionsFromTree,
+  collectFailedFromTree,
+  executionDedupeKey,
+  mergeExecutions,
+  parseExecutionsFromScenarioTxt,
+} from "./pr-e2e-allure.mjs";
+import {
+  STABILITY_REFRESH_SQL,
+  splitStabilityStatements,
+} from "./pr-e2e-stability-sql.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
@@ -38,110 +49,32 @@ function gsutilCp(gcs, local) {
   execSync(`gsutil -q cp "${gcs}" "${local}"`, { stdio: "pipe" });
 }
 
-function normalizeScenarioName(testName) {
-  return testName
-    ?.replace(/\s*\[.*?\]$/, "")
-    ?.replace(/\s*\(.*?\)$/, "")
-    ?.replace(/\s*\|.*$/, "")
-    ?.trim();
-}
-
-function failureDedupeKey(testName, parameters) {
-  const base = normalizeScenarioName(testName) || testName;
-  if (!Array.isArray(parameters) || parameters.length === 0) return base;
-  const sig = parameters
-    .map((p) => {
-      if (typeof p === "string") return p;
-      const n = p?.name ?? p?.key ?? "";
-      const v = p?.value ?? p?.val ?? "";
-      return n ? `${n}=${v}` : String(v ?? "");
-    })
-    .filter((s) => s?.trim())
-    .join(",");
-  return sig ? `${base}|${sig}` : base;
-}
-
-function sanitizeErrorMessage(msg) {
-  const err = msg?.trim();
-  if (!err || err === "categories" || err === "Product defects" || err === "Test defects") {
-    return "No error details available";
-  }
-  return err;
-}
-
-function collectFailedFromTree(node, errorContext, failures, seen) {
-  if (node == null) return;
-  if (Array.isArray(node)) {
-    for (const item of node) collectFailedFromTree(item, errorContext, failures, seen);
-    return;
-  }
-  if (typeof node !== "object") return;
-  const status = node.status?.toString();
-  const name = node.name?.toString();
-  if ((status === "failed" || status === "broken") && name) {
-    const base = normalizeScenarioName(name) || name;
-    const params = node.parameters ?? [];
-    const key = failureDedupeKey(base, params);
-    if (!seen.has(key)) {
-      seen.add(key);
-      failures.push({
-        test_name: base,
-        test_name_full: name,
-        status,
-        error_message: sanitizeErrorMessage(errorContext),
-        duration_ms: node.time?.duration ?? 0,
-        module: null,
-        tags: JSON.stringify(node.tags ?? []),
-        parameters: JSON.stringify(
-          Array.isArray(params)
-            ? params.map((p) =>
-                typeof p === "string" ? { name: "param", value: p } : p,
-              )
-            : params,
-        ),
-      });
+async function insertExecutions(conn, runId, executions) {
+  await conn.query(`DELETE FROM pr_e2e_test_executions WHERE run_id = ?`, [runId]);
+  if (!executions.length) return 0;
+  const BATCH = 200;
+  for (let i = 0; i < executions.length; i += BATCH) {
+    const chunk = executions.slice(i, i + BATCH);
+    const placeholders = chunk.map(() => "(UUID(), ?, ?, ?, ?, ?, ?)").join(", ");
+    const params = [];
+    for (const e of chunk) {
+      params.push(
+        runId,
+        e.test_name,
+        e.test_name_full,
+        e.status,
+        e.module,
+        e.duration_ms ?? 0,
+      );
     }
-    const hasChildCases =
-      Array.isArray(node.children) && node.children.some((c) => c?.status);
-    if (!hasChildCases) return;
+    await conn.query(
+      `INSERT INTO pr_e2e_test_executions (
+        id, run_id, test_name, test_name_full, status, module, duration_ms
+      ) VALUES ${placeholders}`,
+      params,
+    );
   }
-  let nextError = errorContext;
-  if (name && !status && Array.isArray(node.children)) {
-    const childHasStatus = node.children.some((c) => c?.status);
-    nextError = childHasStatus ? name : errorContext || name;
-  }
-  if (Array.isArray(node.children)) {
-    for (const c of node.children) collectFailedFromTree(c, nextError, failures, seen);
-  }
-  if (Array.isArray(node.items)) {
-    for (const c of node.items) collectFailedFromTree(c, nextError, failures, seen);
-  }
-}
-
-function parseFailuresFromTxt(text) {
-  const failures = [];
-  const seen = new Set();
-  for (const line of text.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    const colon = trimmed.indexOf(":");
-    const name = colon > 0 ? trimmed.slice(0, colon).trim() : trimmed;
-    const detail = colon > 0 ? trimmed.slice(colon + 1).trim() : "FAILED";
-    const base = normalizeScenarioName(name) || trimmed;
-    if (seen.has(base)) continue;
-    seen.add(base);
-    failures.push({
-      test_name: base,
-      test_name_full: trimmed,
-      status: "failed",
-      error_message: detail,
-      duration_ms: 0,
-      module: null,
-      tags: "[]",
-      parameters: "[]",
-    });
-  }
-  return failures;
+  return executions.length;
 }
 
 async function loadArtifacts(gcsPath) {
@@ -193,14 +126,25 @@ async function loadArtifacts(gcsPath) {
   fs.rmSync(tmp, { recursive: true, force: true });
 
   const stat = summary.statistic ?? {};
+  const executions = [];
+  const execSeen = new Set();
+  collectExecutionsFromTree(categories, null, executions, execSeen);
+  mergeExecutions(executions, parseExecutionsFromScenarioTxt(allRunTxt));
+  mergeExecutions(executions, parseExecutionsFromScenarioTxt(failedTxt));
+  mergeExecutions(executions, parseExecutionsFromScenarioTxt(skippedTxt));
+
   const failures = [];
-  const seen = new Set();
-  collectFailedFromTree(categories, null, failures, seen);
-  for (const f of parseFailuresFromTxt(failedTxt)) {
-    const key = failureDedupeKey(f.test_name, []);
-    if (!seen.has(key)) {
-      seen.add(key);
-      failures.push(f);
+  const failSeen = new Set();
+  collectFailedFromTree(categories, null, failures, failSeen);
+  for (const f of parseExecutionsFromScenarioTxt(failedTxt)) {
+    if (f.status !== "failed" && f.status !== "broken") continue;
+    const key = executionDedupeKey(f.test_name, []);
+    if (!failSeen.has(key)) {
+      failSeen.add(key);
+      failures.push({
+        ...f,
+        error_message: f.error_message ?? "From scenario log",
+      });
     }
   }
 
@@ -241,6 +185,7 @@ async function loadArtifacts(gcsPath) {
     stat: { total, passed, failed, broken, skipped, unknown },
     scenarioStats,
     failures,
+    executions,
     passRate,
   };
 }
@@ -269,9 +214,8 @@ async function main() {
 
     console.log(`Backfilling ${runs.length} run(s)...`);
     for (const run of runs) {
-      const { stat, scenarioStats, failures, passRate } = await loadArtifacts(
-        run.gcs_report_path,
-      );
+      const { stat, scenarioStats, failures, executions, passRate } =
+        await loadArtifacts(run.gcs_report_path);
       if (!stat.total && !failures.length && !scenarioStats.scenarios_total) {
         console.warn(`Skip ${run.id}: no Allure data at ${run.gcs_report_path}`);
         continue;
@@ -295,6 +239,7 @@ async function main() {
         summaryObj.scenario_stats = scenarioStats;
 
         await conn.query(`DELETE FROM pr_e2e_failures WHERE run_id = ?`, [run.id]);
+        const execN = await insertExecutions(conn, run.id, executions);
         await conn.query(
           `UPDATE pr_e2e_runs SET
             total_tests = ?, passed_count = ?, failed_count = ?, broken_count = ?,
@@ -340,7 +285,7 @@ async function main() {
         }
         await conn.commit();
         console.log(
-          `OK ${run.id}: total=${stat.total ?? 0} failures=${failures.length}`,
+          `OK ${run.id}: total=${stat.total ?? 0} executions=${execN} failures=${failures.length}`,
         );
       } catch (e) {
         await conn.rollback();
@@ -348,45 +293,10 @@ async function main() {
       }
     }
 
-    await conn.query(`DELETE FROM pr_e2e_test_stability WHERE window_days = 30`);
-    await conn.query(`
-      INSERT INTO pr_e2e_test_stability (
-        id, computed_at, window_days, service_repo, env_suffix, test_name, module,
-        total_runs, runs_with_failure, runs_without_failure, flaky_rate_pct, stability_label,
-        last_error_fingerprint, last_seen_at
-      )
-      SELECT
-        UUID(), NOW(), 30, agg.service_repo, 'pr-checks', agg.test_name, agg.module,
-        agg.total_runs, agg.runs_with_failure, GREATEST(agg.total_runs - agg.runs_with_failure, 0),
-        ROUND(100.0 * agg.runs_with_failure / NULLIF(agg.total_runs, 0), 2),
-        CASE
-          WHEN agg.runs_with_failure >= 2 AND (agg.total_runs - agg.runs_with_failure) >= 1 THEN 'flaky'
-          WHEN agg.runs_with_failure >= 2 THEN 'failing'
-          ELSE 'stable'
-        END,
-        agg.last_error_fingerprint, agg.last_seen_at
-      FROM (
-        SELECT
-          r.service_repo,
-          f.test_name,
-          MAX(f.module) AS module,
-          svc_runs.total_runs,
-          COUNT(DISTINCT f.run_id) AS runs_with_failure,
-          MAX(f.error_fingerprint) AS last_error_fingerprint,
-          MAX(r.created_at) AS last_seen_at
-        FROM pr_e2e_failures f
-        INNER JOIN pr_e2e_runs r ON r.id = f.run_id
-        INNER JOIN (
-          SELECT service_repo, COUNT(*) AS total_runs
-          FROM pr_e2e_runs
-          WHERE created_at >= NOW() - INTERVAL 30 DAY
-          GROUP BY service_repo
-        ) svc_runs ON svc_runs.service_repo = r.service_repo
-        WHERE r.created_at >= NOW() - INTERVAL 30 DAY
-        GROUP BY r.service_repo, f.test_name, svc_runs.total_runs
-      ) agg
-    `);
-    console.log("Refreshed pr_e2e_test_stability (30d).");
+    for (const stmt of splitStabilityStatements(STABILITY_REFRESH_SQL)) {
+      await conn.query(stmt);
+    }
+    console.log("Refreshed pr_e2e_test_stability (30d, execution-based).");
   } finally {
     await conn.end().catch(() => {});
   }

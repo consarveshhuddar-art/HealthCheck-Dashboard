@@ -2,6 +2,7 @@
 
 import { Fragment, useState } from "react";
 import { DashboardNavLink } from "@/components/DashboardNavLink";
+import { formatPrE2eRunWhen } from "@/lib/prE2e/format";
 import type { PrE2eRunWithFailures } from "@/lib/prE2e/types";
 import {
   effectiveFailureCount,
@@ -108,11 +109,7 @@ export function PrE2eRunsTable({
                       </td>
                     ) : null}
                     <td className="whitespace-nowrap px-4 py-2 font-mono text-[11px] text-[#64748B]">
-                      {run.finished_at_ist ??
-                        new Date(run.created_at)
-                          .toISOString()
-                          .replace("T", " ")
-                          .slice(0, 19)}
+                      {formatPrE2eRunWhen(run.finished_at_ist, run.created_at)}
                     </td>
                     <td className="px-4 py-2">
                       <DashboardNavLink

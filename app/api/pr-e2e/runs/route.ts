@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 import { getOrSetPrE2eMysqlCache } from "@/lib/dashboard-cache";
-import {
-  executePrE2eRangeQuery,
-  isPrE2eRangeMetric,
-} from "@/lib/prE2e/rangeQuery";
-import { parseTrendDays } from "@/lib/prE2e/trendFill";
+import { loadPrE2eRunsPage } from "@/lib/prE2e/data";
+import { PR_E2E_RUNS_PAGE_SIZE } from "@/lib/prE2e/limits";
 import { PR_E2E_PIPELINE_FILTER } from "@/lib/prE2e/types";
 import {
   invalidateHealthCheckMysqlPool,
@@ -15,6 +12,17 @@ import {
 
 export const dynamic = "force-dynamic";
 
+function parseOffset(raw: string | null): number {
+  const n = parseInt(raw ?? "0", 10);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+function parseLimit(raw: string | null): number {
+  const n = parseInt(raw ?? String(PR_E2E_RUNS_PAGE_SIZE), 10);
+  if (!Number.isFinite(n) || n < 1) return PR_E2E_RUNS_PAGE_SIZE;
+  return Math.min(n, PR_E2E_RUNS_PAGE_SIZE);
+}
+
 export async function GET(req: Request) {
   if (!isHealthCheckMysqlConfigured()) {
     return NextResponse.json(
@@ -24,15 +32,8 @@ export async function GET(req: Request) {
   }
 
   const { searchParams } = new URL(req.url);
-  const metric = searchParams.get("metric") ?? "";
-  const days = parseTrendDays(searchParams.get("days") ?? undefined);
-
-  if (!isPrE2eRangeMetric(metric)) {
-    return NextResponse.json(
-      { ok: false, error: "Invalid or missing metric" },
-      { status: 400 },
-    );
-  }
+  const offset = parseOffset(searchParams.get("offset"));
+  const limit = parseLimit(searchParams.get("limit"));
 
   if (!(await isHealthCheckMysqlReachable())) {
     return NextResponse.json(
@@ -42,11 +43,18 @@ export async function GET(req: Request) {
   }
 
   try {
-    const data = await getOrSetPrE2eMysqlCache(
-      `pr-e2e:query:v1:${PR_E2E_PIPELINE_FILTER}:${metric}:${days}`,
-      () => executePrE2eRangeQuery(metric, days, PR_E2E_PIPELINE_FILTER),
+    const payload = await getOrSetPrE2eMysqlCache(
+      `pr-e2e:runs-page:v1:${limit}:${offset}`,
+      () => loadPrE2eRunsPage(limit, offset, PR_E2E_PIPELINE_FILTER),
     );
-    return NextResponse.json({ ok: true, metric, days, data });
+    return NextResponse.json({
+      ok: true,
+      offset,
+      limit,
+      total: payload.total,
+      runs: payload.runs,
+      hasMore: offset + payload.runs.length < payload.total,
+    });
   } catch (e) {
     if (isRecoverableMysqlPoolError(e)) {
       invalidateHealthCheckMysqlPool();

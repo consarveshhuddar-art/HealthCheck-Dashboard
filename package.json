@@ -10,6 +10,7 @@
     "verify-db": "node scripts/verify-health-db.mjs",
     "verify-pr-e2e-db": "node scripts/verify-pr-e2e-db.mjs",
     "backfill-pr-e2e-from-gcs": "node scripts/backfill-pr-e2e-from-gcs.mjs",
+    "backfill-pr-e2e-executions": "node scripts/backfill-pr-e2e-executions.mjs",
     "refresh-pr-e2e-stability": "node scripts/refresh-pr-e2e-stability.mjs",
     "backfill-pr-e2e-metadata": "node scripts/backfill-pr-e2e-metadata.mjs"
   },

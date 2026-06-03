@@ -1,7 +1,5 @@
 import { MysqlConnectionErrorBanner } from "@/components/MysqlConnectionErrorBanner";
 import {
-  PrE2eAnalyticsFailuresByAuthorPanel,
-  PrE2eAnalyticsFailuresByModulePanel,
   PrE2eAnalyticsHeatmapPanel,
   PrE2eAnalyticsPassRateByEnvPanel,
   PrE2eAnalyticsTopFailingPanel,
@@ -12,7 +10,7 @@ import {
   getCredentialAlertCounts,
   isCredentialExpiryTableAvailable,
 } from "@/lib/credentials";
-import { getOrSetDashboardMysqlCache } from "@/lib/dashboard-cache";
+import { getOrSetPrE2eMysqlCache } from "@/lib/dashboard-cache";
 import { dashboardUi } from "@/lib/dashboardUi";
 import { loadPrE2eDashboardBase } from "@/lib/prE2e/data";
 import { PR_E2E_PIPELINE_FILTER } from "@/lib/prE2e/types";
@@ -30,7 +28,7 @@ export default async function PrChecksAnalyticsPage() {
     dbReady && credTableReady ? await getCredentialAlertCounts() : null;
 
   const data = dbReady
-    ? await getOrSetDashboardMysqlCache(`pr-e2e:base:v1:${pipeline}`, () =>
+    ? await getOrSetPrE2eMysqlCache(`pr-e2e:analytics:v1:${pipeline}`, () =>
         loadPrE2eDashboardBase(pipeline, 20),
       )
     : null;
@@ -62,14 +60,10 @@ export default async function PrChecksAnalyticsPage() {
           <PrE2eAnalyticsHeatmapPanel />
         </div>
 
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <PrE2eAnalyticsFailuresByModulePanel />
+        <div className="mt-4">
           <PrE2eAnalyticsPassRateByEnvPanel />
         </div>
 
-        <div className="mt-4">
-          <PrE2eAnalyticsFailuresByAuthorPanel />
-        </div>
       </div>
     </main>
   );

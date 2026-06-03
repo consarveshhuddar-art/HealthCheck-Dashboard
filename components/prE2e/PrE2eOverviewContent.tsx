@@ -113,7 +113,7 @@ export function PrE2eOverviewContent({
       {flakyPreview.length ? (
         <PrE2eOverviewSection
           title="Flaky tests"
-          description="30-day stability batch — open Flakiness for the full list."
+          description="30-day failure-rate labels (stable / flaky / failing) — open Flakiness for the full list."
         >
           <div className={dashboardUi.panel}>
             <div className={dashboardUi.panelHeaderDivider}>

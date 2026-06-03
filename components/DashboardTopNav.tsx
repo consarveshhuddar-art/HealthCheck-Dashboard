@@ -33,18 +33,18 @@ export function DashboardTopNav({ alerts }: { alerts: CredentialAlertCounts | nu
           Health checks
         </DashboardNavButton>
         <DashboardNavButton
-          href="/credentials"
-          aria-current={onCredentials ? "page" : undefined}
-          className={navTabClass(onCredentials)}
-        >
-          Credential expiry
-        </DashboardNavButton>
-        <DashboardNavButton
           href="/pr-checks"
           aria-current={onPrChecks ? "page" : undefined}
           className={navTabClass(onPrChecks)}
         >
           PR E2E checks
+        </DashboardNavButton>
+        <DashboardNavButton
+          href="/credentials"
+          aria-current={onCredentials ? "page" : undefined}
+          className={navTabClass(onCredentials)}
+        >
+          Credential expiry
         </DashboardNavButton>
       </nav>
       <CredentialsBell alerts={alerts} />

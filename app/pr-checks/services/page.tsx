@@ -5,7 +5,7 @@ import {
   getCredentialAlertCounts,
   isCredentialExpiryTableAvailable,
 } from "@/lib/credentials";
-import { getOrSetDashboardMysqlCache } from "@/lib/dashboard-cache";
+import { getOrSetPrE2eMysqlCache } from "@/lib/dashboard-cache";
 import { dashboardUi } from "@/lib/dashboardUi";
 import { loadServicePassRateTrend } from "@/lib/prE2e/analytics";
 import { fillPassRateTrend } from "@/lib/prE2e/trendFill";
@@ -24,23 +24,26 @@ export default async function PrChecksServicesPage() {
   const alerts =
     dbReady && credTableReady ? await getCredentialAlertCounts() : null;
 
-  const data = dbReady
-    ? await getOrSetDashboardMysqlCache("pr-e2e:base:v1:services", () =>
-        loadPrE2eDashboardBase(PR_E2E_PIPELINE_FILTER, 10),
-      )
+  const cached = dbReady
+    ? await getOrSetPrE2eMysqlCache("pr-e2e:services:v1", async () => {
+        const data = await loadPrE2eDashboardBase(PR_E2E_PIPELINE_FILTER, 10);
+        const services = data.serviceHealth ?? [];
+        const sparklines: Record<string, PrE2ePassRatePoint[]> = {};
+        if (services.length) {
+          const trends = await Promise.all(
+            services.map(async (s) => {
+              const raw = await loadServicePassRateTrend(s.service, 7);
+              return [s.service, fillPassRateTrend(raw, 7)] as const;
+            }),
+          );
+          for (const [svc, pts] of trends) sparklines[svc] = pts;
+        }
+        return { data, sparklines };
+      })
     : null;
 
-  const services = data?.serviceHealth ?? [];
-  const sparklines: Record<string, PrE2ePassRatePoint[]> = {};
-  if (dbReady && services.length) {
-    const trends = await Promise.all(
-      services.map(async (s) => {
-        const raw = await loadServicePassRateTrend(s.service, 7);
-        return [s.service, fillPassRateTrend(raw, 7)] as const;
-      }),
-    );
-    for (const [svc, pts] of trends) sparklines[svc] = pts;
-  }
+  const data = cached?.data ?? null;
+  const sparklines = cached?.sparklines ?? {};
 
   return (
     <main className={dashboardUi.pageShell}>
@@ -58,7 +61,7 @@ export default async function PrChecksServicesPage() {
         ) : null}
 
         <PrE2eServicesHealthPanel
-          initialServices={services}
+          initialServices={data?.serviceHealth ?? []}
           sparklines={sparklines}
         />
       </div>

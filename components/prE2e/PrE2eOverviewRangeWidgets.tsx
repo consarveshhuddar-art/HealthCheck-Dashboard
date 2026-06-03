@@ -62,7 +62,7 @@ export function PrE2eOverviewHealthSummary({
       <div className="flex justify-start">
         <PrE2eRangePicker value={days} onChange={setDays} loading={loading} />
       </div>
-      <div className={`${dashboardUi.statGrid} lg:grid-cols-3`}>
+      <div className={`${dashboardUi.statGrid} lg:grid-cols-4`}>
         <StatCard
           title={`Avg pass rate (${days}d)`}
           value={
@@ -91,24 +91,6 @@ export function PrE2eOverviewHealthSummary({
             <PrE2ePageLink href="/pr-checks/runs?result=fail" className="underline">
               View failed runs →
             </PrE2ePageLink>
-          }
-          accent="rose"
-        />
-      </div>
-      <div className={`${dashboardUi.statGrid} lg:grid-cols-2`}>
-        <StatCard
-          title={`Failures + broken (${days}d)`}
-          value={
-            loading
-              ? "…"
-              : summary
-                ? summary.totalFailures + summary.totalBroken
-                : "—"
-          }
-          hint={
-            summary
-              ? `${summary.totalFailures} failed · ${summary.totalBroken} broken`
-              : "Failed + broken test counts in range"
           }
           accent="rose"
         />

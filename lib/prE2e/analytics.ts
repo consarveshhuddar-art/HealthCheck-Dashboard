@@ -15,6 +15,7 @@ import type {
   PrE2ePrRaisedPoint,
   PrE2ePrRaisedSummary,
   PrE2eServiceHealth,
+  PrE2eServicePoint,
   PrE2eTestCountPoint,
   PrE2eVolumePoint,
 } from "@/lib/prE2e/types";
@@ -362,28 +363,6 @@ export async function loadFailureHeatmap(
   });
 }
 
-export async function loadFailuresByModule(
-  filter: PrE2ePipelineFilter,
-  days = 30,
-  limit = PR_E2E_ANALYTICS_MAX_ROWS,
-): Promise<PrE2eNamedCount[]> {
-  return withHealthCheckMysqlRetry(async (pool) => {
-    const since = subDays(new Date(), days);
-    const pc = pipelineClause(filter, "r");
-    const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT ${SQL_EFFECTIVE_MODULE} AS name, COUNT(*) AS cnt
-       FROM pr_e2e_failures f
-       INNER JOIN pr_e2e_runs r ON r.id = f.run_id
-       WHERE r.created_at >= ?${pc.sql}
-       GROUP BY name
-       ORDER BY cnt DESC
-       LIMIT ?`,
-      [since, ...pc.params, limit],
-    );
-    return rows.map((row) => ({ name: String(row.name), count: num(row.cnt) }));
-  });
-}
-
 export async function loadFailuresByStatus(
   filter: PrE2ePipelineFilter,
   days = 30,
@@ -425,11 +404,45 @@ export async function loadFlakinessByModule(): Promise<PrE2eNamedCount[]> {
        WHERE window_days = 30 AND stability_label = 'flaky'
        GROUP BY name
        ORDER BY cnt DESC
-       LIMIT 12`,
+       LIMIT ?`,
+      [PR_E2E_ANALYTICS_MAX_ROWS],
     );
     return rows.map((row) => ({
       name: String(row.name),
       count: num(row.cnt),
+    }));
+  });
+}
+
+export async function loadFailuresByService(
+  filter: PrE2ePipelineFilter,
+  days: number,
+  limit = PR_E2E_ANALYTICS_MAX_ROWS,
+): Promise<PrE2eServicePoint[]> {
+  return withHealthCheckMysqlRetry(async (pool) => {
+    const since = subDays(new Date(), days);
+    const pc = pipelineClause(filter);
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT r.service_repo AS service,
+        COUNT(DISTINCT r.id) AS runs,
+        SUM(
+          GREATEST(
+            COALESCE(r.failed_count, 0) + COALESCE(r.broken_count, 0),
+            (SELECT COUNT(*) FROM pr_e2e_failures f WHERE f.run_id = r.id),
+            IF(UPPER(r.e2e_jenkins_result) <> 'SUCCESS', 1, 0)
+          )
+        ) AS failures
+       FROM pr_e2e_runs r
+       WHERE r.created_at >= ?${pc.sql}
+       GROUP BY r.service_repo
+       ORDER BY failures DESC, runs DESC
+       LIMIT ?`,
+      [since, ...pc.params, limit],
+    );
+    return rows.map((row) => ({
+      service: String(row.service ?? "unknown"),
+      runs: num(row.runs),
+      failures: num(row.failures),
     }));
   });
 }
@@ -581,28 +594,6 @@ export async function loadRunsByTrigger(
   });
 }
 
-export async function loadFailuresByAuthor(
-  filter: PrE2ePipelineFilter,
-  days = 30,
-  limit = PR_E2E_ANALYTICS_MAX_ROWS,
-): Promise<PrE2eNamedCount[]> {
-  return withHealthCheckMysqlRetry(async (pool) => {
-    const since = subDays(new Date(), days);
-    const pc = pipelineClause(filter);
-    const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT COALESCE(NULLIF(r.git_author,''), NULLIF(r.git_username,''), 'unknown') AS name,
-        COUNT(*) AS cnt
-       FROM pr_e2e_runs r
-       WHERE r.created_at >= ? AND NOT (${PASS_EXPR})${pc.sql}
-       GROUP BY name
-       ORDER BY cnt DESC
-       LIMIT ?`,
-      [since, ...pc.params, limit],
-    );
-    return rows.map((row) => ({ name: String(row.name), count: num(row.cnt) }));
-  });
-}
-
 export async function loadIngestTrend(days = 30): Promise<PrE2eIngestPoint[]> {
   return withHealthCheckMysqlRetry(async (pool) => {
     const since = subDays(new Date(), days);
@@ -631,7 +622,12 @@ export async function loadRecentIngestErrors(
 ): Promise<PrE2eIngestError[]> {
   return withHealthCheckMysqlRetry(async (pool) => {
     const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT id, created_at, e2e_job_name, build_number, status, message
+      `SELECT id,
+         DATE_FORMAT(
+           CONVERT_TZ(created_at, '+00:00', '+05:30'),
+           '%Y-%m-%d %H:%i:%s'
+         ) AS created_at,
+         e2e_job_name, build_number, status, message
        FROM pr_e2e_ingest_log
        WHERE status <> 'ok'
        ORDER BY created_at DESC
@@ -640,10 +636,7 @@ export async function loadRecentIngestErrors(
     );
     return rows.map((row) => ({
       id: String(row.id),
-      created_at:
-        row.created_at instanceof Date
-          ? row.created_at.toISOString()
-          : String(row.created_at),
+      created_at: String(row.created_at ?? ""),
       e2e_job_name: String(row.e2e_job_name ?? ""),
       build_number: num(row.build_number),
       status: String(row.status ?? ""),
@@ -688,11 +681,16 @@ export async function loadPassRateWeekDelta(
 export async function loadLastSuccessfulIngest(): Promise<string | null> {
   return withHealthCheckMysqlRetry(async (pool) => {
     const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT MAX(created_at) AS t FROM pr_e2e_ingest_log WHERE status = 'ok'`,
+      `SELECT DATE_FORMAT(
+         CONVERT_TZ(MAX(created_at), '+00:00', '+05:30'),
+         '%Y-%m-%d %H:%i:%s'
+       ) AS t
+       FROM pr_e2e_ingest_log
+       WHERE status = 'ok'`,
     );
     const t = rows[0]?.t;
-    if (!t) return null;
-    return t instanceof Date ? t.toISOString() : String(t);
+    if (t == null || t === "") return null;
+    return String(t);
   });
 }
 

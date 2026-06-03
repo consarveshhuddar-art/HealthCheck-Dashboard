@@ -7,7 +7,7 @@ import {
   getCredentialAlertCounts,
   isCredentialExpiryTableAvailable,
 } from "@/lib/credentials";
-import { getOrSetDashboardMysqlCache } from "@/lib/dashboard-cache";
+import { getOrSetPrE2eMysqlCache } from "@/lib/dashboard-cache";
 import { dashboardUi } from "@/lib/dashboardUi";
 import { loadPrE2eDashboardBase } from "@/lib/prE2e/data";
 import { PR_E2E_PIPELINE_FILTER } from "@/lib/prE2e/types";
@@ -25,7 +25,7 @@ export default async function PrChecksPage() {
     dbReady && credTableReady ? await getCredentialAlertCounts() : null;
 
   const snapshot = dbReady
-    ? await getOrSetDashboardMysqlCache(`pr-e2e:base:v3:${pipeline}`, () =>
+    ? await getOrSetPrE2eMysqlCache(`pr-e2e:overview:v1:${pipeline}`, () =>
         loadPrE2eDashboardBase(pipeline, 80),
       )
     : null;

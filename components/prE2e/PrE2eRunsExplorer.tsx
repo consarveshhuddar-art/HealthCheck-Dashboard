@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { LoaderSpinner } from "@/components/LoaderSpinner";
 import { PrE2eRunsTable } from "@/components/prE2e/PrE2eRunsTable";
 import {
   classifyPrE2eEnvGroup,
@@ -8,51 +9,84 @@ import {
   PR_E2E_FIXED_ENVS,
 } from "@/lib/prE2e/envGroups";
 import type { PrE2eRunWithFailures } from "@/lib/prE2e/types";
-import { runGitAuthor, runPasses } from "@/lib/prE2e/types";
+import { runPasses } from "@/lib/prE2e/types";
 
 export function PrE2eRunsExplorer({
-  runs,
+  runs: initialRuns,
+  totalRuns,
+  pageSize,
   initialService = "",
   initialResult = "",
   initialPr = "",
-  initialAuthor = "",
   initialEnv = "",
 }: {
   runs: PrE2eRunWithFailures[];
+  totalRuns: number;
+  pageSize: number;
   initialService?: string;
   initialResult?: "" | "pass" | "fail";
   initialPr?: string;
-  initialAuthor?: string;
   initialEnv?: string;
 }) {
+  const [runs, setRuns] = useState(initialRuns);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [service, setService] = useState(initialService);
   const [result, setResult] = useState<"" | "pass" | "fail">(initialResult);
   const [pr, setPr] = useState(initialPr);
-  const [author, setAuthor] = useState(initialAuthor);
   const [env, setEnv] = useState(initialEnv);
+
+  const hasMore = runs.length < totalRuns;
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    setLoadError(null);
+    try {
+      const res = await fetch(
+        `/api/pr-e2e/runs?limit=${pageSize}&offset=${runs.length}`,
+        { cache: "no-store" },
+      );
+      const body = (await res.json()) as {
+        ok?: boolean;
+        runs?: PrE2eRunWithFailures[];
+        error?: string;
+      };
+      if (!res.ok || !body.ok || !body.runs) {
+        throw new Error(body.error ?? `Request failed (${res.status})`);
+      }
+      setRuns((prev) => {
+        const seen = new Set(prev.map((r) => r.id));
+        const next = body.runs!.filter((r) => !seen.has(r.id));
+        return [...prev, ...next];
+      });
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [hasMore, loadingMore, pageSize, runs.length]);
 
   const services = useMemo(
     () => [...new Set(runs.map((r) => r.service_repo))].sort(),
     [runs],
   );
 
-  const authors = useMemo(
-    () =>
-      [...new Set(runs.map((r) => runGitAuthor(r)).filter((a) => a !== "unknown"))].sort(),
-    [runs],
-  );
-
   const filtered = useMemo(() => {
     return runs.filter((r) => {
       if (service && r.service_repo !== service) return false;
-      if (author && runGitAuthor(r) !== author) return false;
       if (env && classifyPrE2eEnvGroup(r.env_suffix) !== env) return false;
       if (result === "pass" && !runPasses(r)) return false;
       if (result === "fail" && runPasses(r)) return false;
       if (pr && String(r.pr_number ?? "") !== pr.trim()) return false;
       return true;
     });
-  }, [runs, service, author, env, result, pr]);
+  }, [runs, service, env, result, pr]);
+
+  const countLabel =
+    filtered.length === runs.length
+      ? `${runs.length} of ${totalRuns} runs`
+      : `${filtered.length} shown · ${runs.length} loaded · ${totalRuns} total`;
 
   return (
     <div>
@@ -111,26 +145,31 @@ export function PrE2eRunsExplorer({
             className="mt-1 block w-24 rounded-md border border-[#EAEFF5] bg-white px-2 py-1.5 text-[12px]"
           />
         </label>
-        <label className="text-[10px] font-medium uppercase text-[#94A3B8]">
-          Git author
-          <select
-            value={author}
-            onChange={(e) => setAuthor(e.target.value)}
-            className="mt-1 block min-w-[9rem] max-w-[12rem] rounded-md border border-[#EAEFF5] bg-white px-2 py-1.5 text-[12px]"
-          >
-            <option value="">All</option>
-            {authors.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </select>
-        </label>
-        <p className="ml-auto text-[11px] text-[#94A3B8]">
-          {filtered.length} of {runs.length} runs
-        </p>
+        <p className="ml-auto text-[11px] text-[#94A3B8]">{countLabel}</p>
       </div>
       <PrE2eRunsTable runs={filtered} expandable />
+      {hasMore ? (
+        <div className="mt-4 flex flex-col items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void loadMore()}
+            disabled={loadingMore}
+            className="rounded-md border border-[#EAEFF5] bg-white px-4 py-2 text-sm font-medium text-[#334155] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors hover:bg-[#F9FAFB] disabled:opacity-60"
+          >
+            {loadingMore ? (
+              <span className="flex items-center gap-2">
+                <LoaderSpinner size="sm" />
+                Loading…
+              </span>
+            ) : (
+              `Load more runs (${Math.min(pageSize, totalRuns - runs.length)} more)`
+            )}
+          </button>
+          {loadError ? (
+            <p className="text-center text-sm text-rose-700">{loadError}</p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -8,17 +8,13 @@ import { useDashboardNavigate } from "@/components/DashboardNavProvider";
 export function PrE2eSearchResultFilters({
   tagQuery,
   services,
-  authors,
   initialService = "",
-  initialAuthor = "",
   resultCount,
   totalCount,
 }: {
   tagQuery: string;
   services: string[];
-  authors: string[];
   initialService?: string;
-  initialAuthor?: string;
   resultCount: number;
   totalCount: number;
 }) {
@@ -27,24 +23,22 @@ export function PrE2eSearchResultFilters({
   const navigate = useDashboardNavigate();
 
   const apply = useCallback(
-    (service: string, author: string) => {
+    (service: string) => {
       const next = new URLSearchParams(searchParams.toString());
       next.set("q", tagQuery);
       if (service) next.set("service", service);
       else next.delete("service");
-      if (author) next.set("author", author);
-      else next.delete("author");
+      next.delete("author");
       const qs = next.toString();
       navigate(qs ? `${pathname}?${qs}` : pathname);
     },
     [navigate, pathname, searchParams, tagQuery],
   );
 
-  const filterHref = (service: string, author: string) => {
+  const filterHref = (service: string) => {
     const next = new URLSearchParams();
     next.set("q", tagQuery);
     if (service) next.set("service", service);
-    if (author) next.set("author", author);
     const qs = next.toString();
     return qs ? `${pathname}?${qs}` : pathname;
   };
@@ -55,7 +49,7 @@ export function PrE2eSearchResultFilters({
         Service
         <select
           value={initialService}
-          onChange={(e) => apply(e.target.value, initialAuthor)}
+          onChange={(e) => apply(e.target.value)}
           className="mt-1 block min-w-[10rem] rounded-md border border-[#EAEFF5] bg-white px-2 py-1.5 text-[12px]"
         >
           <option value="">All services</option>
@@ -66,24 +60,9 @@ export function PrE2eSearchResultFilters({
           ))}
         </select>
       </label>
-      <label className="text-[10px] font-medium uppercase text-[#94A3B8]">
-        Git author
-        <select
-          value={initialAuthor}
-          onChange={(e) => apply(initialService, e.target.value)}
-          className="mt-1 block min-w-[10rem] rounded-md border border-[#EAEFF5] bg-white px-2 py-1.5 text-[12px]"
-        >
-          <option value="">All authors</option>
-          {authors.map((a) => (
-            <option key={a} value={a}>
-              {a}
-            </option>
-          ))}
-        </select>
-      </label>
-      {(initialService || initialAuthor) && (
+      {initialService && (
         <DashboardNavButton
-          href={filterHref("", "")}
+          href={filterHref("")}
           className="rounded-md border border-[#EAEFF5] bg-white px-2.5 py-1.5 text-[11px] text-[#64748B] hover:bg-white"
         >
           Clear filters

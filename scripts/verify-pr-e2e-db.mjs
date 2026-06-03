@@ -68,6 +68,17 @@ async function main() {
     const [[stab]] = await conn.query(
       "SELECT COUNT(*) AS n FROM pr_e2e_test_stability WHERE window_days = 30",
     );
+    let execN = null;
+    try {
+      const [[exec]] = await conn.query(
+        `SELECT COUNT(*) AS n FROM pr_e2e_test_executions e
+         INNER JOIN pr_e2e_runs r ON r.id = e.run_id
+         WHERE r.created_at >= NOW() - INTERVAL 30 DAY`,
+      );
+      execN = exec.n;
+    } catch {
+      /* table may not exist yet */
+    }
     const [latest] = await conn.query(
       `SELECT id, service_repo, e2e_build_number, e2e_jenkins_result,
               total_tests, failed_count, broken_count, gcs_report_path, created_at
@@ -91,6 +102,7 @@ async function main() {
     console.log("pr_e2e_runs:", runs.n);
     console.log("pr_e2e_failures:", fail.n);
     console.log("pr_e2e_test_stability (30d):", stab.n);
+    if (execN != null) console.log("pr_e2e_test_executions (30d):", execN);
     console.log("\nIngest log by status:");
     console.table(ingestOk);
     console.log("\nLatest runs:");
@@ -101,9 +113,18 @@ async function main() {
         "\nWARN: pr_e2e_failures is empty but runs exist — ingest likely only writes pr_e2e_runs.",
       );
     }
+    if (execN === null) {
+      console.warn(
+        "WARN: pr_e2e_test_executions table missing — run scripts/create-pr-e2e-test-executions.sql",
+      );
+    } else if (Number(execN) === 0) {
+      console.warn(
+        "WARN: pr_e2e_test_executions empty — npm run backfill-pr-e2e-executions",
+      );
+    }
     if (Number(stab.n) === 0) {
       console.warn(
-        "WARN: pr_e2e_test_stability is empty — weekly stability job has not populated it (needs failure detail history).",
+        "WARN: pr_e2e_test_stability is empty — npm run refresh-pr-e2e-stability after executions exist.",
       );
     }
     if (unparsed.length) {

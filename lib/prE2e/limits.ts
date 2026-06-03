@@ -6,3 +6,6 @@ export const PR_E2E_STABILITY_TABLE_MAX_ROWS = 50;
 
 /** Max runs in the overview Recent runs panel (range-filtered). */
 export const PR_E2E_RECENT_RUNS_MAX_ROWS = 50;
+
+/** Initial page size and each “Load more” batch on /pr-checks/runs. */
+export const PR_E2E_RUNS_PAGE_SIZE = 50;

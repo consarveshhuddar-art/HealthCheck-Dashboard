@@ -5,9 +5,10 @@ import {
   getCredentialAlertCounts,
   isCredentialExpiryTableAvailable,
 } from "@/lib/credentials";
-import { getOrSetDashboardMysqlCache } from "@/lib/dashboard-cache";
+import { getOrSetPrE2eMysqlCache } from "@/lib/dashboard-cache";
 import { dashboardUi } from "@/lib/dashboardUi";
-import { loadPrE2eRuns } from "@/lib/prE2e/data";
+import { loadPrE2eRunsPage } from "@/lib/prE2e/data";
+import { PR_E2E_RUNS_PAGE_SIZE } from "@/lib/prE2e/limits";
 import { PR_E2E_PIPELINE_FILTER } from "@/lib/prE2e/types";
 import { isHealthCheckMysqlConfigured, isHealthCheckMysqlReachable } from "@/lib/mysql/server";
 
@@ -20,7 +21,6 @@ export default async function PrChecksRunsPage({
     result?: string;
     service?: string;
     pr?: string;
-    author?: string;
     env?: string;
   }>;
 }) {
@@ -34,17 +34,24 @@ export default async function PrChecksRunsPage({
   const alerts =
     dbReady && credTableReady ? await getCredentialAlertCounts() : null;
 
-  const { runs, dbConnectionError } = dbReady
-    ? await getOrSetDashboardMysqlCache("pr-e2e:runs:v3:120", async () => {
-        if (!(await isHealthCheckMysqlReachable())) {
-          return { runs: [], dbConnectionError: true };
-        }
-        return {
-          runs: await loadPrE2eRuns(120, PR_E2E_PIPELINE_FILTER),
-          dbConnectionError: false,
-        };
-      })
-    : { runs: [], dbConnectionError: false };
+  const snapshot = dbReady
+    ? await getOrSetPrE2eMysqlCache(
+        `pr-e2e:runs-page:v1:${PR_E2E_RUNS_PAGE_SIZE}:0`,
+        async () => {
+          if (!(await isHealthCheckMysqlReachable())) {
+            return { runs: [], total: 0, dbConnectionError: true };
+          }
+          const page = await loadPrE2eRunsPage(
+            PR_E2E_RUNS_PAGE_SIZE,
+            0,
+            PR_E2E_PIPELINE_FILTER,
+          );
+          return { ...page, dbConnectionError: false };
+        },
+      )
+    : { runs: [], total: 0, dbConnectionError: false };
+
+  const { runs, total, dbConnectionError } = snapshot;
 
   return (
     <main className={dashboardUi.pageShell}>
@@ -52,7 +59,7 @@ export default async function PrChecksRunsPage({
         <DashboardHeader
           eyebrow="PR E2E"
           title="All runs"
-          description="Filter by service, environment, git author, result, or PR. Expand a row to see failed tests inline."
+          description="Filter by service, environment, result, or PR. Expand a row to see failed tests inline."
           alerts={alerts}
           showCredentialsNav={false}
         />
@@ -64,10 +71,11 @@ export default async function PrChecksRunsPage({
         <section className={dashboardUi.panel}>
           <PrE2eRunsExplorer
             runs={runs}
+            totalRuns={total}
+            pageSize={PR_E2E_RUNS_PAGE_SIZE}
             initialResult={initialResult}
             initialService={sp.service ?? ""}
             initialPr={sp.pr ?? ""}
-            initialAuthor={sp.author ?? ""}
             initialEnv={sp.env ?? ""}
           />
         </section>

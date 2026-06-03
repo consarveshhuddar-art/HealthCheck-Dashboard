@@ -26,7 +26,7 @@ export function PrE2eStabilityTable({
   if (!rows.length) {
     return (
       <p className="rounded-[10px] border border-dashed border-[#EAEFF5] bg-[#F9FAFB] px-4 py-8 text-center text-sm text-[#94A3B8]">
-        No stability batch yet. Computed weekly on Sunday after enough 30-day history.
+        No stability batch yet. Apply create-pr-e2e-test-executions.sql, backfill executions, then npm run refresh-pr-e2e-stability.
       </p>
     );
   }
@@ -42,19 +42,19 @@ export function PrE2eStabilityTable({
               <th className="px-4 py-2">Test</th>
               <th
                 className="px-4 py-2"
-                title="E2E builds where this test failed"
+                title="Failed or broken executions in 30d"
               >
-                Fail builds
+                Failed
               </th>
               <th
                 className="px-4 py-2"
-                title="E2E builds where this test did not fail"
+                title="Passed executions in 30d"
               >
-                Clean builds
+                Passed
               </th>
               <th
                 className="px-4 py-2"
-                title="Fail builds ÷ (fail + clean). Stable with 1 build can show 100% — low sample."
+                title="(failed + broken) ÷ (passed + failed + broken). Labels need at least 5 executions."
               >
                 Fail %
               </th>
@@ -104,8 +104,8 @@ export function PrE2eStabilityTable({
                   <td
                     className="px-4 py-2 tabular-nums"
                     title={
-                      row.stability_label === "stable" && row.total_runs < 2
-                        ? "Stable = not flaky/failing; % misleading with <2 builds"
+                      row.stability_label === "stable" && row.total_runs < 5
+                        ? "Fewer than 5 executions — labeled stable by default"
                         : undefined
                     }
                   >

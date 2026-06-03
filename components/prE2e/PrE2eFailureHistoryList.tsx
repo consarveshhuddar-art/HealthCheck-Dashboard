@@ -4,6 +4,7 @@ import { DashboardNavLink } from "@/components/DashboardNavLink";
 import { PrE2eScrollRegion } from "@/components/prE2e/PrE2eScrollRegion";
 import { PrE2eTestTags } from "@/components/prE2e/PrE2eTestTags";
 import type { PrE2eTestHistoryRow } from "@/lib/prE2e/data";
+import { formatPrE2eDateTimeIst } from "@/lib/prE2e/format";
 import { serviceHref, testHistoryHref } from "@/lib/prE2e/types";
 
 export function PrE2eFailureHistoryList({
@@ -63,7 +64,7 @@ export function PrE2eFailureHistoryList({
                 {row.classification}
               </span>
               <span className="text-[#94A3B8]">
-                {new Date(row.created_at).toISOString().slice(0, 16).replace("T", " ")}
+                {formatPrE2eDateTimeIst(row.created_at) ?? row.created_at}
               </span>
             </div>
             <PrE2eTestTags tags={row.tags} className="mt-1.5" />

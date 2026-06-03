@@ -2,8 +2,7 @@ import "server-only";
 import {
   loadErrorFingerprints,
   loadFailureHeatmap,
-  loadFailuresByAuthor,
-  loadFailuresByModule,
+  loadFailuresByService,
   loadIngestTrend,
   loadPassRateByEnv,
   loadPrE2eDurationTrend,
@@ -87,39 +86,6 @@ async function loadDailyTrend(
   });
 }
 
-async function loadFailuresByService(
-  filter: PrE2ePipelineFilter,
-  days: number,
-) {
-  return withHealthCheckMysqlRetry(async (pool) => {
-    const since = subDays(new Date(), days);
-    const pw = pipelineWhere(filter);
-    const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT r.service_repo AS service,
-        COUNT(DISTINCT r.id) AS runs,
-        SUM(
-          GREATEST(
-            COALESCE(r.failed_count, 0) + COALESCE(r.broken_count, 0),
-            (SELECT COUNT(*) FROM pr_e2e_failures f WHERE f.run_id = r.id),
-            IF(UPPER(r.e2e_jenkins_result) <> 'SUCCESS', 1, 0)
-          )
-        ) AS failures
-       FROM pr_e2e_runs r
-       WHERE r.created_at >= ?${pw.sql}
-       GROUP BY r.service_repo
-       HAVING failures > 0
-       ORDER BY failures DESC
-       LIMIT 12`,
-      [since, ...pw.params],
-    );
-    return rows.map((row) => ({
-      service: String(row.service ?? "unknown"),
-      runs: num(row.runs),
-      failures: num(row.failures),
-    }));
-  });
-}
-
 export const PR_E2E_RANGE_METRICS = [
   "rangeSummary",
   "passRateTrend",
@@ -131,8 +97,6 @@ export const PR_E2E_RANGE_METRICS = [
   "runsByTrigger",
   "fingerprints",
   "heatmap",
-  "failuresByModule",
-  "failuresByAuthor",
   "passRateByEnv",
   "ingestTrend",
   "serviceHealth",
@@ -175,10 +139,6 @@ export async function executePrE2eRangeQuery(
       return loadErrorFingerprints(filter, days, PR_E2E_ANALYTICS_MAX_ROWS);
     case "heatmap":
       return loadFailureHeatmap(filter, 30, PR_E2E_ANALYTICS_MAX_ROWS);
-    case "failuresByModule":
-      return loadFailuresByModule(filter, days, PR_E2E_ANALYTICS_MAX_ROWS);
-    case "failuresByAuthor":
-      return loadFailuresByAuthor(filter, days, PR_E2E_ANALYTICS_MAX_ROWS);
     case "passRateByEnv":
       return groupPassRateByEnvRows(
         await loadPassRateByEnv(filter, days, 500),

@@ -21,14 +21,13 @@ export const dynamic = "force-dynamic";
 export default async function PrChecksTestsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; name?: string; service?: string; author?: string }>;
+  searchParams: Promise<{ q?: string; name?: string; service?: string }>;
 }) {
   const sp = await searchParams;
   const testName = sp.name?.trim();
   const tagQuery = sp.q?.trim();
   const filters = {
     service: sp.service?.trim() || undefined,
-    author: sp.author?.trim() || undefined,
   };
 
   if (!testName && !tagQuery) notFound();
@@ -101,9 +100,7 @@ export default async function PrChecksTestsPage({
             <PrE2eSearchResultFilters
               tagQuery={tagQuery!}
               services={facets.services}
-              authors={facets.authors}
               initialService={filters.service ?? ""}
-              initialAuthor={filters.author ?? ""}
               resultCount={rows.length}
               totalCount={totalCount}
             />
@@ -112,8 +109,8 @@ export default async function PrChecksTestsPage({
             history={rows}
             showAuthor
             emptyMessage={
-              filters.service || filters.author
-                ? "No rows match these tags with the selected service/author filters."
+              filters.service
+                ? "No rows match these tags with the selected service filter."
                 : 'No test failures match all of these tags. Try fewer tags or check spelling (e.g. @service_video @smoke).'
             }
           />

@@ -10,6 +10,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { PrE2eFailuresByServiceChart } from "@/components/prE2e/PrE2eFailuresByServiceChart";
 import type { PrE2eDailyPoint, PrE2eServicePoint } from "@/lib/prE2e/types";
 import { dashboardUi } from "@/lib/dashboardUi";
 
@@ -60,24 +61,7 @@ export function PrE2eChartsSection({
         </div>
         <div className={dashboardUi.chartWell}>
           {byService.length ? (
-            <ResponsiveContainer width="100%" height={H}>
-              <BarChart
-                data={byService}
-                layout="vertical"
-                margin={{ top: 8, right: 16, left: 72, bottom: 8 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#EAEFF5" />
-                <XAxis type="number" tick={{ fontSize: 10 }} />
-                <YAxis
-                  type="category"
-                  dataKey="service"
-                  width={68}
-                  tick={{ fontSize: 10 }}
-                />
-                <Tooltip />
-                <Bar dataKey="failures" fill="#8b5cf6" name="Failures" />
-              </BarChart>
-            </ResponsiveContainer>
+            <PrE2eFailuresByServiceChart data={byService} />
           ) : (
             <p className="py-12 text-center text-sm text-[#94A3B8]">No failure breakdown yet.</p>
           )}

@@ -21,6 +21,7 @@ import {
 } from "recharts";
 import { LoaderSpinner } from "@/components/LoaderSpinner";
 import { PrE2eRangePicker } from "@/components/prE2e/PrE2eRangePicker";
+import { PrE2eFailuresByServiceChart } from "@/components/prE2e/PrE2eFailuresByServiceChart";
 import { PrE2eScrollRegion } from "@/components/prE2e/PrE2eScrollRegion";
 import { useOverviewCharts } from "@/components/prE2e/PrE2eOverviewChartsContext";
 import { usePrE2eRangeQuery } from "@/components/prE2e/usePrE2eRangeQuery";
@@ -33,7 +34,6 @@ import type {
   PrE2ePassRatePoint,
   PrE2eServicePoint,
   PrE2eTestCountPoint,
-  PrE2eVolumePoint,
 } from "@/lib/prE2e/types";
 import { dashboardUi } from "@/lib/dashboardUi";
 import { prE2eChartColors } from "@/lib/prE2e/chartColors";
@@ -125,11 +125,6 @@ export function PrE2eOverviewTrendCharts() {
     PR_E2E_TREND_DAYS_DEFAULT,
     range,
   );
-  const volume = usePrE2eRangeQuery<PrE2eVolumePoint[]>(
-    "volumeTrend",
-    PR_E2E_TREND_DAYS_DEFAULT,
-    range,
-  );
   const testCount = usePrE2eRangeQuery<PrE2eTestCountPoint[]>(
     "testCountTrend",
     PR_E2E_TREND_DAYS_DEFAULT,
@@ -147,7 +142,6 @@ export function PrE2eOverviewTrendCharts() {
   );
 
   const passRateTrend = passRate.data ?? [];
-  const volumeTrend = volume.data ?? [];
   const testCountTrend = testCount.data ?? [];
   const durationTrend = duration.data ?? [];
   const dailyData = daily.data ?? [];
@@ -155,7 +149,6 @@ export function PrE2eOverviewTrendCharts() {
   const hasPassTrend = passRateTrend.some((p) => p.runs > 0 || p.passRate != null);
   const rangeLoading =
     passRate.loading ||
-    volume.loading ||
     testCount.loading ||
     duration.loading ||
     daily.loading;
@@ -231,34 +224,6 @@ export function PrE2eOverviewTrendCharts() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <PrE2eChartPanel
-          title="Run volume by Jenkins result"
-          description="Stacked daily outcomes: SUCCESS / FAILURE / UNSTABLE / ABORTED."
-        >
-          {volume.loading ? (
-            <ChartLoading />
-          ) : volume.error ? (
-            <ChartError message={volume.error} />
-          ) : volumeTrend.length ? (
-            <ResponsiveContainer width="100%" height={H}>
-              <BarChart data={volumeTrend} margin={{ top: 8, right: 8, left: 0, bottom: 32 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#EAEFF5" />
-                <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="success" stackId="a" fill={C.pass} name="Success" />
-                <Bar dataKey="failure" stackId="a" fill={C.failure} name="Failure" />
-                <Bar dataKey="unstable" stackId="a" fill={C.flaky} name="Unstable" />
-                <Bar dataKey="aborted" stackId="a" fill={C.aborted} name="Aborted" />
-                <Bar dataKey="other" stackId="a" fill={C.unknown} name="Other" />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <EmptyChart />
-          )}
-        </PrE2eChartPanel>
-
         <PrE2eChartPanel
           title="Test count trends"
           description="Sum of passed / failed / broken / skipped across runs per day."
@@ -391,24 +356,7 @@ export function PrE2eOverviewBreakdownCharts({
         ) : byService.error ? (
           <ChartError message={byService.error} />
         ) : byServiceData.length ? (
-          <ResponsiveContainer width="100%" height={H}>
-            <BarChart
-              data={byServiceData}
-              layout="vertical"
-              margin={{ top: 8, right: 16, left: 72, bottom: 8 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#EAEFF5" />
-              <XAxis type="number" tick={{ fontSize: 10 }} />
-              <YAxis
-                type="category"
-                dataKey="service"
-                width={68}
-                tick={{ fontSize: 10 }}
-              />
-              <Tooltip />
-              <Bar dataKey="failures" fill={C.unknown} name="Failures" />
-            </BarChart>
-          </ResponsiveContainer>
+          <PrE2eFailuresByServiceChart data={byServiceData} />
         ) : (
           <EmptyChart />
         )}

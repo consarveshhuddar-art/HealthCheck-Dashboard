@@ -1,3 +1,42 @@
+import { fromZonedTime, formatInTimeZone } from "date-fns-tz";
+
+const IST = "Asia/Kolkata";
+
+/** Parse MySQL DATETIME / ISO values stored as UTC (same convention as health_check_runs). */
+function parseMysqlUtcTimestamp(value: string): Date | null {
+  const s = value.trim();
+  if (!s) return null;
+  if (/[Zz]$|[+-]\d{2}:?\d{2}$/.test(s)) {
+    const dt = new Date(s);
+    return Number.isNaN(dt.getTime()) ? null : dt;
+  }
+  const normalized = s.includes("T") ? s : s.replace(" ", "T");
+  const base = normalized.split(".")[0] ?? normalized;
+  try {
+    return fromZonedTime(base, "UTC");
+  } catch {
+    return null;
+  }
+}
+
+/** Display a DB/ISO timestamp in IST (dashboard default). */
+export function formatPrE2eDateTimeIst(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const dt = parseMysqlUtcTimestamp(iso);
+  if (!dt) return null;
+  return `${formatInTimeZone(dt, IST, "yyyy-MM-dd HH:mm:ss")} IST`;
+}
+
+/** When column: prefer Jenkins finish time (already IST); else UTC created_at → IST. */
+export function formatPrE2eRunWhen(
+  finishedAtIst: string | null | undefined,
+  createdAt: string,
+): string {
+  const fin = finishedAtIst?.trim();
+  if (fin) return fin.includes("IST") ? fin : `${fin} IST`;
+  return formatPrE2eDateTimeIst(createdAt) ?? createdAt;
+}
+
 export function formatPassRateDelta(
   current: number | null,
   previous: number | null,

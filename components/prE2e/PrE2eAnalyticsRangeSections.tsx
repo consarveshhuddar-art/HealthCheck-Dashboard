@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { LoaderSpinner } from "@/components/LoaderSpinner";
-import { PrE2eBarChartSimple, PrE2eIngestCharts } from "@/components/prE2e/PrE2eDashboardCharts";
+import { PrE2eIngestCharts } from "@/components/prE2e/PrE2eDashboardCharts";
 import {
   PrE2eHeatmapGrid,
   PrE2eNamedCountTable,
@@ -86,35 +87,43 @@ export function PrE2eAnalyticsTopFailingPanel() {
   );
 }
 
+const heatmapToggleClass =
+  "rounded-md border border-[#EAEFF5] bg-white px-2.5 py-1.5 text-[11px] font-medium text-[#334155] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-colors hover:bg-[#F9FAFB]";
+
 export function PrE2eAnalyticsHeatmapPanel() {
+  const [expanded, setExpanded] = useState(false);
   const { data, loading, error } = usePrE2eRangeQuery<PrE2eHeatmapCell[]>(
     "heatmap",
     30,
   );
+  const cells = data ?? [];
+  const canToggle = !loading && !error && cells.length > 0;
+
   return (
     <PrE2ePanel
       title="Failure heatmap"
       description="Top tests × date over the last 30 days — hover cells for full test name and count."
+      headerActions={
+        canToggle ? (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className={heatmapToggleClass}
+            aria-expanded={expanded}
+          >
+            {expanded ? "Collapse" : "Expand"}
+          </button>
+        ) : null
+      }
     >
       {loading ? (
         <PanelLoading />
       ) : error ? (
         <PanelError message={error} />
       ) : (
-        <PrE2eHeatmapGrid cells={data ?? []} />
+        <PrE2eHeatmapGrid cells={cells} expanded={expanded} />
       )}
     </PrE2ePanel>
-  );
-}
-
-export function PrE2eAnalyticsFailuresByModulePanel() {
-  return (
-    <RangePanel<PrE2eNamedCount[]>
-      title="Failures by module"
-      metric="failuresByModule"
-    >
-      {(rows) => <PrE2eBarChartSimple data={rows ?? []} />}
-    </RangePanel>
   );
 }
 
@@ -134,17 +143,6 @@ export function PrE2eAnalyticsPassRateByEnvPanel() {
           extraHeader="Avg pass %"
         />
       )}
-    </RangePanel>
-  );
-}
-
-export function PrE2eAnalyticsFailuresByAuthorPanel() {
-  return (
-    <RangePanel<PrE2eNamedCount[]>
-      title="Failures by git author"
-      metric="failuresByAuthor"
-    >
-      {(rows) => <PrE2eBarChartSimple data={rows ?? []} layout="horizontal" />}
     </RangePanel>
   );
 }

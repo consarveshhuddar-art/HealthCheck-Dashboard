@@ -12,7 +12,7 @@ import {
   getCredentialAlertCounts,
   isCredentialExpiryTableAvailable,
 } from "@/lib/credentials";
-import { getOrSetDashboardMysqlCache } from "@/lib/dashboard-cache";
+import { getOrSetPrE2eMysqlCache } from "@/lib/dashboard-cache";
 import { dashboardUi } from "@/lib/dashboardUi";
 import { loadPrE2eDashboardBase } from "@/lib/prE2e/data";
 import { PR_E2E_PIPELINE_FILTER } from "@/lib/prE2e/types";
@@ -29,7 +29,7 @@ export default async function PrChecksIngestPage() {
     dbReady && credTableReady ? await getCredentialAlertCounts() : null;
 
   const data = dbReady
-    ? await getOrSetDashboardMysqlCache("pr-e2e:ingest-base:v2", () =>
+    ? await getOrSetPrE2eMysqlCache("pr-e2e:ingest:v1", () =>
         loadPrE2eDashboardBase(PR_E2E_PIPELINE_FILTER, 5),
       )
     : null;
@@ -67,9 +67,7 @@ export default async function PrChecksIngestPage() {
           }`}
         >
           <span className="font-medium">Last successful ingest: </span>
-          {lastOk
-            ? new Date(lastOk).toISOString().replace("T", " ").slice(0, 19)
-            : "None recorded — dashboard may be stale"}
+          {lastOk ? `${lastOk} IST` : "None recorded — dashboard may be stale"}
         </p>
 
         <PrE2eOverviewSection

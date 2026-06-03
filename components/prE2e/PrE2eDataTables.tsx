@@ -176,7 +176,13 @@ export function PrE2eServiceHealthTable({ rows }: { rows: PrE2eServiceHealth[] }
   );
 }
 
-export function PrE2eHeatmapGrid({ cells }: { cells: PrE2eHeatmapCell[] }) {
+export function PrE2eHeatmapGrid({
+  cells,
+  expanded = false,
+}: {
+  cells: PrE2eHeatmapCell[];
+  expanded?: boolean;
+}) {
   if (!cells.length) return <EmptyState message="Not enough failure history for heatmap." />;
 
   const dates = [...new Set(cells.map((c) => c.date))];
@@ -187,7 +193,10 @@ export function PrE2eHeatmapGrid({ cells }: { cells: PrE2eHeatmapCell[] }) {
   const visibleTests = tests.slice(0, PR_E2E_ANALYTICS_MAX_ROWS);
 
   return (
-    <PrE2eScrollRegion>
+    <PrE2eScrollRegion
+      expanded={expanded}
+      collapsedClass="max-h-[min(240px,30vh)] overflow-auto overscroll-contain"
+    >
       <table className="border-collapse text-[9px]">
         <thead>
           <tr>
@@ -253,7 +262,7 @@ export function PrE2eIngestErrorsTable({ rows }: { rows: PrE2eIngestError[] }) {
             <span className="font-medium">{row.e2e_job_name}</span>
             <span className="text-[#94A3B8]">#{row.build_number}</span>
             <span className="text-[#94A3B8]">
-              {new Date(row.created_at).toISOString().slice(0, 16).replace("T", " ")}
+              {row.created_at ? `${row.created_at} IST` : "—"}
             </span>
           </div>
           {row.message ? (
