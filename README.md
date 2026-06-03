@@ -320,4 +320,3 @@ Ingest looks wrong?
 | `FC-Brahmastra/PR_Docker.Jenkinsfile` | Docker/K8s E2E + ingest hook |
 | `FC-Brahmastra/prE2eIngest.groovy` | MySQL ingest for PR E2E |
 | `FC-Brahmastra/ServiceHealthCheck.Jenkinsfile` | Health check ingest |
-| `fc-core/PR.Jenkinsfile` (and other service PR jobs) | Trigger downstream E2E jobs |
