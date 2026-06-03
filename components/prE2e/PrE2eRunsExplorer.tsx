@@ -2,6 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { PrE2eRunsTable } from "@/components/prE2e/PrE2eRunsTable";
+import {
+  classifyPrE2eEnvGroup,
+  PR_E2E_EPHEMERAL_ENV_LABEL,
+  PR_E2E_FIXED_ENVS,
+} from "@/lib/prE2e/envGroups";
 import type { PrE2eRunWithFailures } from "@/lib/prE2e/types";
 import { runGitAuthor, runPasses } from "@/lib/prE2e/types";
 
@@ -11,17 +16,20 @@ export function PrE2eRunsExplorer({
   initialResult = "",
   initialPr = "",
   initialAuthor = "",
+  initialEnv = "",
 }: {
   runs: PrE2eRunWithFailures[];
   initialService?: string;
   initialResult?: "" | "pass" | "fail";
   initialPr?: string;
   initialAuthor?: string;
+  initialEnv?: string;
 }) {
   const [service, setService] = useState(initialService);
   const [result, setResult] = useState<"" | "pass" | "fail">(initialResult);
   const [pr, setPr] = useState(initialPr);
   const [author, setAuthor] = useState(initialAuthor);
+  const [env, setEnv] = useState(initialEnv);
 
   const services = useMemo(
     () => [...new Set(runs.map((r) => r.service_repo))].sort(),
@@ -38,12 +46,13 @@ export function PrE2eRunsExplorer({
     return runs.filter((r) => {
       if (service && r.service_repo !== service) return false;
       if (author && runGitAuthor(r) !== author) return false;
+      if (env && classifyPrE2eEnvGroup(r.env_suffix) !== env) return false;
       if (result === "pass" && !runPasses(r)) return false;
       if (result === "fail" && runPasses(r)) return false;
       if (pr && String(r.pr_number ?? "") !== pr.trim()) return false;
       return true;
     });
-  }, [runs, service, author, result, pr]);
+  }, [runs, service, author, env, result, pr]);
 
   return (
     <div>
@@ -61,6 +70,24 @@ export function PrE2eRunsExplorer({
                 {s}
               </option>
             ))}
+          </select>
+        </label>
+        <label className="text-[10px] font-medium uppercase text-[#94A3B8]">
+          Environment
+          <select
+            value={env}
+            onChange={(e) => setEnv(e.target.value)}
+            className="mt-1 block min-w-[10rem] rounded-md border border-[#EAEFF5] bg-white px-2 py-1.5 text-[12px]"
+          >
+            <option value="">All</option>
+            {PR_E2E_FIXED_ENVS.map((e) => (
+              <option key={e} value={e}>
+                {e}
+              </option>
+            ))}
+            <option value={PR_E2E_EPHEMERAL_ENV_LABEL}>
+              {PR_E2E_EPHEMERAL_ENV_LABEL}
+            </option>
           </select>
         </label>
         <label className="text-[10px] font-medium uppercase text-[#94A3B8]">

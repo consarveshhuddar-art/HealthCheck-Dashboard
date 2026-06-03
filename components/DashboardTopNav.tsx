@@ -1,8 +1,8 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { DashboardNavButton } from "@/components/DashboardNavButton";
 import { CredentialsBell } from "@/components/CredentialsBell";
-import { useDashboardNavigate } from "@/components/DashboardNavProvider";
 import type { CredentialAlertCounts } from "@/lib/types";
 
 function navTabClass(active: boolean) {
@@ -15,7 +15,6 @@ function navTabClass(active: boolean) {
 
 export function DashboardTopNav({ alerts }: { alerts: CredentialAlertCounts | null }) {
   const pathname = usePathname();
-  const navigate = useDashboardNavigate();
   const onHealth = pathname === "/";
   const onCredentials = pathname === "/credentials";
   const onPrChecks = pathname.startsWith("/pr-checks");
@@ -26,30 +25,27 @@ export function DashboardTopNav({ alerts }: { alerts: CredentialAlertCounts | nu
         className="inline-flex items-center gap-2 rounded-[10px] border border-[#EAEFF5] bg-[#F9FAFB] p-1"
         aria-label="Dashboard sections"
       >
-        <button
-          type="button"
+        <DashboardNavButton
+          href="/"
           aria-current={onHealth ? "page" : undefined}
           className={navTabClass(onHealth)}
-          onClick={() => navigate("/")}
         >
           Health checks
-        </button>
-        <button
-          type="button"
+        </DashboardNavButton>
+        <DashboardNavButton
+          href="/credentials"
           aria-current={onCredentials ? "page" : undefined}
           className={navTabClass(onCredentials)}
-          onClick={() => navigate("/credentials")}
         >
           Credential expiry
-        </button>
-        <button
-          type="button"
+        </DashboardNavButton>
+        <DashboardNavButton
+          href="/pr-checks"
           aria-current={onPrChecks ? "page" : undefined}
           className={navTabClass(onPrChecks)}
-          onClick={() => navigate("/pr-checks")}
         >
           PR E2E checks
-        </button>
+        </DashboardNavButton>
       </nav>
       <CredentialsBell alerts={alerts} />
     </div>

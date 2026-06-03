@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PrE2ePageLink } from "@/components/prE2e/PrE2ePageLink";
 import { PrE2eRunsTable } from "@/components/prE2e/PrE2eRunsTable";
 import { PrE2eStabilityTable } from "@/components/prE2e/PrE2eStabilityTable";
 import { DashboardHeader } from "@/components/DashboardHeader";
@@ -70,9 +70,9 @@ export default async function PrCheckServiceDetailPage({
         />
 
         <p className="mb-4 text-[11px]">
-          <Link href="/pr-checks/services" className="text-violet-800 underline">
+          <PrE2ePageLink href="/pr-checks/services" className="text-violet-800 underline">
             ← All services
-          </Link>
+          </PrE2ePageLink>
         </p>
 
         <div className={`mb-4 flex flex-wrap items-center gap-4 ${dashboardUi.panel}`}>

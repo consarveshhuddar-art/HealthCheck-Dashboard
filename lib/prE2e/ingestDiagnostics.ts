@@ -1,5 +1,9 @@
 import type { PrE2eRunWithFailures } from "@/lib/prE2e/types";
-import { jenkinsResultIsSuccess } from "@/lib/prE2e/types";
+import {
+  effectiveFailedBrokenOnRun,
+  jenkinsResultIsSuccess,
+  runHasIngestedTestData,
+} from "@/lib/prE2e/types";
 
 export type PrE2eFailureDetailState =
   | { kind: "has_rows"; count: number }
@@ -16,20 +20,15 @@ export function prE2eFailureDetailState(
     return { kind: "has_rows", count: run.failures.length };
   }
 
-  const failedBroken = run.failed_count + run.broken_count;
+  const failedBroken = effectiveFailedBrokenOnRun(run);
   if (failedBroken > 0) {
     return { kind: "allure_counts_not_ingested", failedBroken };
   }
 
-  const allureParsed =
-    run.total_tests > 0 ||
-    run.pass_rate_pct != null ||
-    failedBroken > 0;
-
   if (
     !jenkinsResultIsSuccess(run.e2e_jenkins_result) &&
     run.gcs_report_path &&
-    !allureParsed
+    !runHasIngestedTestData(run)
   ) {
     return { kind: "gcs_report_not_parsed", gcsPath: run.gcs_report_path };
   }

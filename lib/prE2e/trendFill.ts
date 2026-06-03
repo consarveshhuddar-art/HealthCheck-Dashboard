@@ -3,9 +3,22 @@ import { formatInTimeZone } from "date-fns-tz";
 
 const IST = "Asia/Kolkata";
 
-export function parseTrendDays(raw: string | undefined): 7 | 30 | 90 {
-  if (raw === "7" || raw === "90") return Number(raw) as 7 | 30 | 90;
-  return 30;
+export const PR_E2E_TREND_DAY_OPTIONS = [1, 7, 30, 90] as const;
+export type PrE2eTrendDays = (typeof PR_E2E_TREND_DAY_OPTIONS)[number];
+export const PR_E2E_TREND_DAYS_DEFAULT: PrE2eTrendDays = 7;
+
+export const PR_E2E_TREND_RANGE_BUTTONS: { key: string; label: string }[] = [
+  { key: "1", label: "1d" },
+  { key: "7", label: "7d" },
+  { key: "30", label: "30d" },
+  { key: "90", label: "90d" },
+];
+
+export function parseTrendDays(raw: string | undefined): PrE2eTrendDays {
+  if (raw === "1" || raw === "7" || raw === "90") {
+    return Number(raw) as PrE2eTrendDays;
+  }
+  return PR_E2E_TREND_DAYS_DEFAULT;
 }
 
 export function trendDayLabels(days: number): string[] {

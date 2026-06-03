@@ -1,7 +1,9 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useTransition } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useCallback } from "react";
+import { DashboardNavButton } from "@/components/DashboardNavButton";
+import { useDashboardNavigate } from "@/components/DashboardNavProvider";
 
 export function PrE2eSearchResultFilters({
   tagQuery,
@@ -21,9 +23,8 @@ export function PrE2eSearchResultFilters({
   totalCount: number;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const [pending, startTransition] = useTransition();
+  const navigate = useDashboardNavigate();
 
   const apply = useCallback(
     (service: string, author: string) => {
@@ -34,12 +35,19 @@ export function PrE2eSearchResultFilters({
       if (author) next.set("author", author);
       else next.delete("author");
       const qs = next.toString();
-      startTransition(() => {
-        router.push(qs ? `${pathname}?${qs}` : pathname);
-      });
+      navigate(qs ? `${pathname}?${qs}` : pathname);
     },
-    [pathname, router, searchParams, tagQuery],
+    [navigate, pathname, searchParams, tagQuery],
   );
+
+  const filterHref = (service: string, author: string) => {
+    const next = new URLSearchParams();
+    next.set("q", tagQuery);
+    if (service) next.set("service", service);
+    if (author) next.set("author", author);
+    const qs = next.toString();
+    return qs ? `${pathname}?${qs}` : pathname;
+  };
 
   return (
     <div className="mb-3 flex flex-wrap items-end gap-3 rounded-[10px] border border-[#EAEFF5] bg-[#F9FAFB] p-3">
@@ -47,7 +55,6 @@ export function PrE2eSearchResultFilters({
         Service
         <select
           value={initialService}
-          disabled={pending}
           onChange={(e) => apply(e.target.value, initialAuthor)}
           className="mt-1 block min-w-[10rem] rounded-md border border-[#EAEFF5] bg-white px-2 py-1.5 text-[12px]"
         >
@@ -63,7 +70,6 @@ export function PrE2eSearchResultFilters({
         Git author
         <select
           value={initialAuthor}
-          disabled={pending}
           onChange={(e) => apply(initialService, e.target.value)}
           className="mt-1 block min-w-[10rem] rounded-md border border-[#EAEFF5] bg-white px-2 py-1.5 text-[12px]"
         >
@@ -75,6 +81,14 @@ export function PrE2eSearchResultFilters({
           ))}
         </select>
       </label>
+      {(initialService || initialAuthor) && (
+        <DashboardNavButton
+          href={filterHref("", "")}
+          className="rounded-md border border-[#EAEFF5] bg-white px-2.5 py-1.5 text-[11px] text-[#64748B] hover:bg-white"
+        >
+          Clear filters
+        </DashboardNavButton>
+      )}
       <p className="ml-auto text-[11px] text-[#94A3B8]">
         {resultCount === totalCount
           ? `${resultCount} row(s)`

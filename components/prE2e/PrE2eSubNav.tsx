@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { DashboardNavLink } from "@/components/DashboardNavLink";
 
 const TABS = [
   { href: "/pr-checks", label: "Overview", match: (p: string) => p === "/pr-checks" },
@@ -28,15 +28,9 @@ const TABS = [
   },
 ] as const;
 
-function tabHref(path: string, searchParams: URLSearchParams, extra?: string) {
-  const params = new URLSearchParams();
-  const days = searchParams.get("days");
-  if (days) params.set("days", days);
-  if (extra) {
-    for (const [k, v] of new URLSearchParams(extra)) params.set(k, v);
-  }
-  const q = params.toString();
-  return q ? `${path}?${q}` : path;
+function tabHref(path: string, extra?: string) {
+  if (!extra) return path;
+  return `${path}?${extra}`;
 }
 
 export function PrE2eSubNav({ preserveParams = true }: { preserveParams?: boolean }) {
@@ -51,13 +45,12 @@ export function PrE2eSubNav({ preserveParams = true }: { preserveParams?: boolea
     <nav className="flex flex-wrap gap-1.5 text-[11px]" aria-label="PR E2E sections">
       {TABS.map((tab) => {
         const active = tab.match(pathname);
-          const href = tabHref(
-            tab.href,
-            searchParams,
-            tab.href.includes("flaky") ? extra : undefined,
-          );
+        const href = tabHref(
+          tab.href,
+          tab.href.includes("flaky") ? extra : undefined,
+        );
         return (
-          <Link
+          <DashboardNavLink
             key={tab.href}
             href={href}
             className={`rounded-md border px-3 py-1.5 font-medium transition-colors ${
@@ -67,7 +60,7 @@ export function PrE2eSubNav({ preserveParams = true }: { preserveParams?: boolea
             }`}
           >
             {tab.label}
-          </Link>
+          </DashboardNavLink>
         );
       })}
     </nav>

@@ -389,10 +389,11 @@ export async function loadFlakinessByModule(): Promise<PrE2eNamedCount[]> {
 
 export async function loadServiceHealth(
   filter: PrE2ePipelineFilter,
+  days = 30,
 ): Promise<PrE2eServiceHealth[]> {
   return withHealthCheckMysqlRetry(async (pool) => {
     const pc = pipelineClause(filter);
-    const since = subDays(new Date(), 30);
+    const since = subDays(new Date(), days);
     const [runRows] = await pool.query<RowDataPacket[]>(
       `SELECT r.service_repo AS svc,
         COUNT(*) AS runs,
@@ -446,12 +447,53 @@ export async function loadServiceHealth(
   });
 }
 
+export async function loadPrE2eRangeSummary(
+  filter: PrE2ePipelineFilter,
+  days: number,
+): Promise<{
+  runs: number;
+  passRuns: number;
+  failRuns: number;
+  passRateAvg: number | null;
+  totalFailures: number;
+  totalBroken: number;
+  activeServices: number;
+}> {
+  return withHealthCheckMysqlRetry(async (pool) => {
+    const pc = pipelineClause(filter);
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT
+        COUNT(*) AS runs,
+        SUM(CASE WHEN ${PASS_EXPR} THEN 1 ELSE 0 END) AS pass_runs,
+        SUM(CASE WHEN NOT (${PASS_EXPR}) THEN 1 ELSE 0 END) AS fail_runs,
+        AVG(CASE WHEN r.pass_rate_pct IS NOT NULL THEN r.pass_rate_pct END) AS pr_avg,
+        SUM(COALESCE(r.failed_count, 0)) AS fail_cnt,
+        SUM(COALESCE(r.broken_count, 0)) AS broken_cnt,
+        COUNT(DISTINCT r.service_repo) AS services
+       FROM pr_e2e_runs r
+       WHERE r.created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)${pc.sql}`,
+      [days, ...pc.params],
+    );
+    const row = rows[0] ?? {};
+    return {
+      runs: num(row.runs),
+      passRuns: num(row.pass_runs),
+      failRuns: num(row.fail_runs),
+      passRateAvg: numOrNull(row.pr_avg),
+      totalFailures: num(row.fail_cnt),
+      totalBroken: num(row.broken_cnt),
+      activeServices: num(row.services),
+    };
+  });
+}
+
 export async function loadPassRateByEnv(
   filter: PrE2ePipelineFilter,
+  days = 30,
   limit = PR_E2E_ANALYTICS_MAX_ROWS,
 ): Promise<PrE2eNamedCount[]> {
   return withHealthCheckMysqlRetry(async (pool) => {
-    const since = subDays(new Date(), 30);
+    const since = subDays(new Date(), days);
     const pc = pipelineClause(filter);
     const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT r.env_suffix AS name,
@@ -475,9 +517,10 @@ export async function loadPassRateByEnv(
 
 export async function loadRunsByTrigger(
   filter: PrE2ePipelineFilter,
+  days = 30,
 ): Promise<PrE2eNamedCount[]> {
   return withHealthCheckMysqlRetry(async (pool) => {
-    const since = subDays(new Date(), 30);
+    const since = subDays(new Date(), days);
     const pc = pipelineClause(filter);
     const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT ${SQL_EFFECTIVE_TRIGGER} AS name, COUNT(*) AS cnt
@@ -493,10 +536,11 @@ export async function loadRunsByTrigger(
 
 export async function loadFailuresByAuthor(
   filter: PrE2ePipelineFilter,
+  days = 30,
   limit = PR_E2E_ANALYTICS_MAX_ROWS,
 ): Promise<PrE2eNamedCount[]> {
   return withHealthCheckMysqlRetry(async (pool) => {
-    const since = subDays(new Date(), 30);
+    const since = subDays(new Date(), days);
     const pc = pipelineClause(filter);
     const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT COALESCE(NULLIF(r.git_author,''), NULLIF(r.git_username,''), 'unknown') AS name,

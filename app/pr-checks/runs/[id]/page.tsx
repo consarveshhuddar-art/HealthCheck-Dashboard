@@ -1,4 +1,5 @@
-import Link from "next/link";
+import { PrE2ePageLink } from "@/components/prE2e/PrE2ePageLink";
+import { PrE2eTestNameLink } from "@/components/prE2e/PrE2eTestNameLink";
 import { notFound } from "next/navigation";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { PrE2eTestTags } from "@/components/prE2e/PrE2eTestTags";
@@ -14,9 +15,10 @@ import {
 } from "@/lib/prE2e/ingestDiagnostics";
 import {
   effectivePassRatePct,
+  effectivePassedCount,
+  effectiveTotalTests,
   jenkinsResultIsSuccess,
   prHistoryHref,
-  testHistoryHref,
 } from "@/lib/prE2e/types";
 import { isHealthCheckMysqlConfigured } from "@/lib/mysql/server";
 
@@ -77,18 +79,18 @@ export default async function PrCheckRunDetailPage({
         />
 
         <p className="mb-4 text-[11px]">
-          <Link href="/pr-checks/runs" className="text-violet-800 underline">
+          <PrE2ePageLink href="/pr-checks/runs" className="text-violet-800 underline">
             ← All runs
-          </Link>
+          </PrE2ePageLink>
           {run.pr_number != null ? (
             <>
               {" · "}
-              <Link
+              <PrE2ePageLink
                 href={prHistoryHref(run.pr_number, run.service_repo)}
                 className="text-violet-800 underline"
               >
                 PR #{run.pr_number} history
-              </Link>
+              </PrE2ePageLink>
             </>
           ) : null}
         </p>
@@ -109,8 +111,8 @@ export default async function PrCheckRunDetailPage({
           </MetaItem>
           <MetaItem label="Pass rate">
             <span className="tabular-nums">
-              {passPct != null ? `${passPct}%` : "—"} ({run.passed_count}/
-              {run.total_tests})
+              {passPct != null ? `${passPct}%` : "—"} ({effectivePassedCount(run)}/
+              {effectiveTotalTests(run)})
             </span>
           </MetaItem>
           <MetaItem label="Duration">{durationMin}</MetaItem>
@@ -190,12 +192,10 @@ export default async function PrCheckRunDetailPage({
               {run.failures.map((f) => (
                 <li key={f.id} className="py-3">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Link
-                      href={testHistoryHref(f.test_name)}
+                    <PrE2eTestNameLink
+                      name={f.test_name}
                       className="font-medium text-violet-800 underline"
-                    >
-                      {f.test_name}
-                    </Link>
+                    />
                     <span className="rounded border border-[#EAEFF5] px-1.5 py-0.5 text-[10px] capitalize text-[#64748B]">
                       {f.classification}
                     </span>

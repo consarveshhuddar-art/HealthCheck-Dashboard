@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useDashboardNavigate } from "@/components/DashboardNavProvider";
+import { DashboardNavButton } from "@/components/DashboardNavButton";
 import type { CredentialAlertCounts } from "@/lib/types";
 
 export function CredentialsBell({
@@ -9,7 +9,6 @@ export function CredentialsBell({
 }: {
   alerts: CredentialAlertCounts | null;
 }) {
-  const navigate = useDashboardNavigate();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -93,16 +92,13 @@ export function CredentialsBell({
               No credentials expiring soon or expired.
             </p>
           )}
-          <button
-            type="button"
-            className="mt-3 w-full rounded-md border border-[#EAEFF5] bg-[#F9FAFB] px-3 py-1.5 text-[11px] font-medium text-[#334155] transition-colors hover:bg-white"
-            onClick={() => {
-              setOpen(false);
-              navigate("/credentials");
-            }}
+          <DashboardNavButton
+            href="/credentials"
+            className="mt-3 w-full rounded-md border border-[#EAEFF5] bg-[#F9FAFB] px-3 py-1.5 text-[11px] font-medium text-[#334155] transition-colors hover:bg-white disabled:opacity-60"
+            onClick={() => setOpen(false)}
           >
             Open credential expiry
-          </button>
+          </DashboardNavButton>
         </div>
       ) : null}
     </div>

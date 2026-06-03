@@ -1,9 +1,10 @@
-import Link from "next/link";
-import type { PrE2eServiceHealth } from "@/lib/prE2e/types";
+"use client";
+
+import { DashboardNavLink } from "@/components/DashboardNavLink";
+import { PrE2eServiceSparkline } from "@/components/prE2e/PrE2eServiceSparkline";
+import type { PrE2ePassRatePoint, PrE2eServiceHealth } from "@/lib/prE2e/types";
 import { serviceHref } from "@/lib/prE2e/types";
 import { prE2eBadgeStyles } from "@/lib/prE2e/chartColors";
-import { PrE2eServiceSparkline } from "@/components/prE2e/PrE2eServiceSparkline";
-import type { PrE2ePassRatePoint } from "@/lib/prE2e/types";
 
 const ragDot = {
   green: "bg-emerald-500",
@@ -26,10 +27,10 @@ export function PrE2eServiceCards({
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {services.map((s) => (
-        <Link
+        <DashboardNavLink
           key={s.service}
           href={serviceHref(s.service)}
-          className="rounded-[10px] border border-[#EAEFF5] bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-shadow hover:shadow-md"
+          className="block rounded-[10px] border border-[#EAEFF5] bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-shadow hover:shadow-md"
         >
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
@@ -54,7 +55,7 @@ export function PrE2eServiceCards({
               {s.failureCount} test fails
             </span>
           </div>
-        </Link>
+        </DashboardNavLink>
       ))}
     </div>
   );

@@ -1,4 +1,6 @@
-import Link from "next/link";
+"use client";
+
+import { DashboardNavLink } from "@/components/DashboardNavLink";
 import type { PrE2eStabilityRow } from "@/lib/prE2e/types";
 import { serviceHref, testHistoryHref } from "@/lib/prE2e/types";
 import { prE2eBadgeStyles } from "@/lib/prE2e/chartColors";
@@ -30,8 +32,8 @@ export function PrE2eStabilityTable({
   }
 
   return (
-    <div className="overflow-hidden bg-white">
-      <div className="max-h-[560px] overflow-auto">
+    <div className="-mx-1 overflow-hidden rounded-[8px] border border-[#EAEFF5]">
+      <div className="max-h-[min(70vh,640px)] overflow-auto">
         <table className="w-full min-w-[880px] border-collapse text-left text-[13px]">
           <thead>
             <tr className="border-b border-[#EAEFF5] bg-[#F9FAFB] text-[10px] font-medium uppercase tracking-wide text-[#94A3B8]">
@@ -77,23 +79,23 @@ export function PrE2eStabilityTable({
                     </span>
                   </td>
                   <td className="px-4 py-2">
-                    <Link
+                    <DashboardNavLink
                       href={serviceHref(row.service_repo)}
                       className="text-violet-800 underline"
                     >
                       {row.service_repo}
-                    </Link>
+                    </DashboardNavLink>
                   </td>
                   <td
                     className="max-w-[280px] truncate px-4 py-2 text-[#64748B]"
                     title={row.test_name}
                   >
-                    <Link
+                    <DashboardNavLink
                       href={testHistoryHref(row.test_name)}
                       className="text-violet-800 underline"
                     >
                       {row.test_name}
-                    </Link>
+                    </DashboardNavLink>
                   </td>
                   <td className="px-4 py-2 tabular-nums">{row.runs_with_failure}</td>
                   <td className="px-4 py-2 tabular-nums">

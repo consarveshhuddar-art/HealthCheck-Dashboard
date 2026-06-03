@@ -150,10 +150,14 @@ async function loadArtifacts(gcsPath) {
   const summaryPath = path.join(tmp, "summary.json");
   const categoriesPath = path.join(tmp, "categories.json");
   const failedTxtPath = path.join(tmp, "failed.txt");
+  const allRunTxtPath = path.join(tmp, "allRun.txt");
+  const skippedTxtPath = path.join(tmp, "skipped.txt");
 
   let summary = {};
   let categories = {};
   let failedTxt = "";
+  let allRunTxt = "";
+  let skippedTxt = "";
 
   try {
     gsutilCp(`${base}/allure-report/widgets/summary.json`, summaryPath);
@@ -173,6 +177,18 @@ async function loadArtifacts(gcsPath) {
   } catch {
     /* optional */
   }
+  try {
+    gsutilCp(`${base}/AllRunScenarios.txt`, allRunTxtPath);
+    allRunTxt = fs.readFileSync(allRunTxtPath, "utf8");
+  } catch {
+    /* optional */
+  }
+  try {
+    gsutilCp(`${base}/skippedTestScenarios.txt`, skippedTxtPath);
+    skippedTxt = fs.readFileSync(skippedTxtPath, "utf8");
+  } catch {
+    /* optional */
+  }
 
   fs.rmSync(tmp, { recursive: true, force: true });
 
@@ -180,22 +196,53 @@ async function loadArtifacts(gcsPath) {
   const failures = [];
   const seen = new Set();
   collectFailedFromTree(categories, null, failures, seen);
-  if (failures.length === 0) {
-    for (const f of parseFailuresFromTxt(failedTxt)) {
-      const key = failureDedupeKey(f.test_name, []);
-      if (!seen.has(key)) {
-        seen.add(key);
-        failures.push(f);
-      }
+  for (const f of parseFailuresFromTxt(failedTxt)) {
+    const key = failureDedupeKey(f.test_name, []);
+    if (!seen.has(key)) {
+      seen.add(key);
+      failures.push(f);
     }
   }
 
-  const total = stat.total ?? 0;
-  const passed = stat.passed ?? 0;
-  const passRate =
-    total > 0 ? Math.round((10000 * passed) / total) / 100 : null;
+  const allLines = allRunTxt.split("\n").filter((l) => l.trim());
+  const scenarioStats = {
+    scenarios_total: allLines.length || null,
+    scenarios_passed: allLines.filter((l) => l.includes("PASSED")).length || null,
+    scenarios_failed:
+      failedTxt.split("\n").filter((l) => l.trim()).length || null,
+    scenarios_skipped:
+      skippedTxt.split("\n").filter((l) => l.trim()).length || null,
+  };
 
-  return { stat, failures, passRate };
+  let total = stat.total ?? 0;
+  let passed = stat.passed ?? 0;
+  let failed = stat.failed ?? 0;
+  let skipped = stat.skipped ?? 0;
+  let broken = stat.broken ?? 0;
+  let unknown = stat.unknown ?? 0;
+
+  if (total <= 0 && scenarioStats.scenarios_total) {
+    total = scenarioStats.scenarios_total;
+    passed = scenarioStats.scenarios_passed ?? 0;
+    failed = scenarioStats.scenarios_failed ?? 0;
+    skipped = scenarioStats.scenarios_skipped ?? 0;
+    unknown = Math.max(total - passed - failed - skipped - broken, 0);
+  } else if ((scenarioStats.scenarios_failed ?? 0) > failed + broken) {
+    failed = scenarioStats.scenarios_failed ?? failed;
+    passed = scenarioStats.scenarios_passed ?? passed;
+    total = scenarioStats.scenarios_total ?? total;
+    skipped = scenarioStats.scenarios_skipped ?? skipped;
+    unknown = Math.max(total - passed - failed - skipped - broken, 0);
+  }
+
+  const passRate = total > 0 ? Math.round((10000 * passed) / total) / 100 : null;
+
+  return {
+    stat: { total, passed, failed, broken, skipped, unknown },
+    scenarioStats,
+    failures,
+    passRate,
+  };
 }
 
 async function main() {
@@ -222,19 +269,38 @@ async function main() {
 
     console.log(`Backfilling ${runs.length} run(s)...`);
     for (const run of runs) {
-      const { stat, failures, passRate } = await loadArtifacts(run.gcs_report_path);
-      if (!stat.total && !failures.length) {
+      const { stat, scenarioStats, failures, passRate } = await loadArtifacts(
+        run.gcs_report_path,
+      );
+      if (!stat.total && !failures.length && !scenarioStats.scenarios_total) {
         console.warn(`Skip ${run.id}: no Allure data at ${run.gcs_report_path}`);
         continue;
       }
 
       await conn.beginTransaction();
       try {
+        let summaryObj = {};
+        try {
+          const raw = run.summary;
+          summaryObj =
+            typeof raw === "string"
+              ? JSON.parse(raw || "{}")
+              : raw && typeof raw === "object"
+                ? { ...raw }
+                : {};
+        } catch {
+          summaryObj = {};
+        }
+        summaryObj.allure_statistic = stat;
+        summaryObj.scenario_stats = scenarioStats;
+
         await conn.query(`DELETE FROM pr_e2e_failures WHERE run_id = ?`, [run.id]);
         await conn.query(
           `UPDATE pr_e2e_runs SET
             total_tests = ?, passed_count = ?, failed_count = ?, broken_count = ?,
-            skipped_count = ?, unknown_count = ?, pass_rate_pct = ?
+            skipped_count = ?, unknown_count = ?, pass_rate_pct = ?,
+            scenarios_total = ?, scenarios_passed = ?, scenarios_failed = ?, scenarios_skipped = ?,
+            summary = ?
            WHERE id = ?`,
           [
             stat.total ?? 0,
@@ -244,6 +310,11 @@ async function main() {
             stat.skipped ?? 0,
             stat.unknown ?? 0,
             passRate,
+            scenarioStats.scenarios_total,
+            scenarioStats.scenarios_passed,
+            scenarioStats.scenarios_failed,
+            scenarioStats.scenarios_skipped,
+            JSON.stringify(summaryObj),
             run.id,
           ],
         );

@@ -1,6 +1,5 @@
 import { MysqlConnectionErrorBanner } from "@/components/MysqlConnectionErrorBanner";
-import { PrE2eServiceCards } from "@/components/prE2e/PrE2eServiceCards";
-import { PrE2eServiceHealthTable, PrE2ePanel } from "@/components/prE2e/PrE2eDataTables";
+import { PrE2eServicesHealthPanel } from "@/components/prE2e/PrE2eServicesRangeSections";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import {
   getCredentialAlertCounts,
@@ -10,7 +9,7 @@ import { getOrSetDashboardMysqlCache } from "@/lib/dashboard-cache";
 import { dashboardUi } from "@/lib/dashboardUi";
 import { loadServicePassRateTrend } from "@/lib/prE2e/analytics";
 import { fillPassRateTrend } from "@/lib/prE2e/trendFill";
-import { loadPrE2eFullDashboard } from "@/lib/prE2e/data";
+import { loadPrE2eDashboardBase } from "@/lib/prE2e/data";
 import type { PrE2ePassRatePoint } from "@/lib/prE2e/types";
 import { PR_E2E_PIPELINE_FILTER } from "@/lib/prE2e/types";
 import { isHealthCheckMysqlConfigured } from "@/lib/mysql/server";
@@ -26,8 +25,8 @@ export default async function PrChecksServicesPage() {
     dbReady && credTableReady ? await getCredentialAlertCounts() : null;
 
   const data = dbReady
-    ? await getOrSetDashboardMysqlCache("pr-e2e:services:v2", () =>
-        loadPrE2eFullDashboard(PR_E2E_PIPELINE_FILTER, 10),
+    ? await getOrSetDashboardMysqlCache("pr-e2e:base:v1:services", () =>
+        loadPrE2eDashboardBase(PR_E2E_PIPELINE_FILTER, 10),
       )
     : null;
 
@@ -49,7 +48,7 @@ export default async function PrChecksServicesPage() {
         <DashboardHeader
           eyebrow="PR E2E"
           title="Service health"
-          description="All services at a glance — click a card for run history and stability. Sparkline = 7-day pass rate."
+          description="All services at a glance — click a card for run history. Table range is per-panel; sparklines stay 7-day."
           alerts={alerts}
           showCredentialsNav={false}
         />
@@ -58,13 +57,10 @@ export default async function PrChecksServicesPage() {
           <MysqlConnectionErrorBanner className="mb-4" />
         ) : null}
 
-        <PrE2ePanel title="Service cards" className="mb-4">
-          <PrE2eServiceCards services={services} sparklines={sparklines} />
-        </PrE2ePanel>
-
-        <PrE2ePanel title="Comparison table (30d)">
-          <PrE2eServiceHealthTable rows={services} />
-        </PrE2ePanel>
+        <PrE2eServicesHealthPanel
+          initialServices={services}
+          sparklines={sparklines}
+        />
       </div>
     </main>
   );

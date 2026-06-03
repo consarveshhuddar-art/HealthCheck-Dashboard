@@ -52,6 +52,7 @@ import type {
   PrE2eTestCountPoint,
   PrE2eVolumePoint,
 } from "@/lib/prE2e/types";
+import { classifyPrE2eEnvGroup } from "@/lib/prE2e/envGroups";
 import {
   escapeMysqlLike,
   failureHasAllTags,
@@ -134,6 +135,10 @@ function mapRun(row: RowDataPacket): PrE2eRun {
     skipped_count: num(row.skipped_count),
     unknown_count: num(row.unknown_count),
     pass_rate_pct: numOrNull(row.pass_rate_pct),
+    scenarios_total: numOrNull(row.scenarios_total),
+    scenarios_passed: numOrNull(row.scenarios_passed),
+    scenarios_failed: numOrNull(row.scenarios_failed),
+    scenarios_skipped: numOrNull(row.scenarios_skipped),
     allure_url: row.allure_url ? String(row.allure_url) : null,
     gcs_report_path: row.gcs_report_path ? String(row.gcs_report_path) : null,
   };
@@ -176,34 +181,6 @@ function mapStability(row: RowDataPacket): PrE2eStabilityRow {
   };
 }
 
-export async function loadPrE2eRuns(
-  limit = DEFAULT_RUNS_LIMIT,
-  filter: PrE2ePipelineFilter = "pr",
-): Promise<PrE2eRunWithFailures[]> {
-  return withHealthCheckMysqlRetry(async (pool) => {
-    const pw = pipelineWhere(filter);
-    const [runRows] = await pool.query<RowDataPacket[]>(
-      `SELECT r.*,
-        (SELECT COUNT(*) FROM pr_e2e_failures f WHERE f.run_id = r.id) AS failure_count
-       FROM pr_e2e_runs r
-       WHERE 1=1${pw.sql}
-       ORDER BY r.created_at DESC
-       LIMIT ?`,
-      [...pw.params, limit],
-    );
-    const runs = runRows.map((row) => ({
-      ...mapRun(row),
-      failure_count: num(row.failure_count),
-    }));
-    const ids = runs.map((r) => r.id);
-    const failuresByRun = await fetchFailuresForRunIds(pool, ids);
-    return runs.map((r) => ({
-      ...r,
-      failures: failuresByRun.get(r.id) ?? [],
-    }));
-  });
-}
-
 async function fetchFailuresForRunIds(
   pool: import("mysql2/promise").Pool,
   runIds: string[],
@@ -222,6 +199,78 @@ async function fetchFailuresForRunIds(
     map.set(f.run_id, list);
   }
   return map;
+}
+
+function attachFailuresToRuns(
+  runs: PrE2eRun[],
+  failuresByRun: Map<string, PrE2eFailure[]>,
+): PrE2eRunWithFailures[] {
+  return runs.map((r) => {
+    const failures = failuresByRun.get(r.id) ?? [];
+    return {
+      ...r,
+      failures,
+      failure_count: effectiveFailureCount({
+        failure_count: failures.length,
+        failed_count: r.failed_count,
+        broken_count: r.broken_count,
+        e2e_jenkins_result: r.e2e_jenkins_result,
+        total_tests: r.total_tests,
+        scenarios_total: r.scenarios_total,
+        scenarios_failed: r.scenarios_failed,
+      }),
+    };
+  });
+}
+
+export async function loadPrE2eRuns(
+  limit = DEFAULT_RUNS_LIMIT,
+  filter: PrE2ePipelineFilter = "pr",
+): Promise<PrE2eRunWithFailures[]> {
+  return withHealthCheckMysqlRetry(async (pool) => {
+    const pw = pipelineWhere(filter);
+    const [runRows] = await pool.query<RowDataPacket[]>(
+      `SELECT r.*,
+        (SELECT COUNT(*) FROM pr_e2e_failures f WHERE f.run_id = r.id) AS failure_count
+       FROM pr_e2e_runs r
+       WHERE 1=1${pw.sql}
+       ORDER BY r.created_at DESC
+       LIMIT ?`,
+      [...pw.params, limit],
+    );
+    const runs = runRows.map((row) => mapRun(row));
+    const failuresByRun = await fetchFailuresForRunIds(
+      pool,
+      runs.map((r) => r.id),
+    );
+    return attachFailuresToRuns(runs, failuresByRun);
+  });
+}
+
+export async function loadPrE2eRunsInRange(
+  days: number,
+  limit: number,
+  filter: PrE2ePipelineFilter = "pr",
+): Promise<PrE2eRunWithFailures[]> {
+  return withHealthCheckMysqlRetry(async (pool) => {
+    const since = subDays(new Date(), days);
+    const pw = pipelineWhere(filter);
+    const [runRows] = await pool.query<RowDataPacket[]>(
+      `SELECT r.*,
+        (SELECT COUNT(*) FROM pr_e2e_failures f WHERE f.run_id = r.id) AS failure_count
+       FROM pr_e2e_runs r
+       WHERE r.created_at >= ?${pw.sql}
+       ORDER BY r.created_at DESC
+       LIMIT ?`,
+      [since, ...pw.params, limit],
+    );
+    const runs = runRows.map((row) => mapRun(row));
+    const failuresByRun = await fetchFailuresForRunIds(
+      pool,
+      runs.map((r) => r.id),
+    );
+    return attachFailuresToRuns(runs, failuresByRun);
+  });
 }
 
 export async function loadPrE2eRunById(
@@ -247,6 +296,9 @@ export async function loadPrE2eRunById(
         failed_count: run.failed_count,
         broken_count: run.broken_count,
         e2e_jenkins_result: run.e2e_jenkins_result,
+        total_tests: run.total_tests,
+        scenarios_total: run.scenarios_total,
+        scenarios_failed: run.scenarios_failed,
       }),
     };
   });
@@ -257,6 +309,7 @@ export async function loadPrE2eRunsByPr(
   service?: string,
 ): Promise<PrE2eRunWithFailures[]> {
   return withHealthCheckMysqlRetry(async (pool) => {
+    const pw = pipelineWhere("pr");
     const params: (string | number)[] = [prNumber];
     let serviceSql = "";
     if (service) {
@@ -267,22 +320,16 @@ export async function loadPrE2eRunsByPr(
       `SELECT r.*,
         (SELECT COUNT(*) FROM pr_e2e_failures f WHERE f.run_id = r.id) AS failure_count
        FROM pr_e2e_runs r
-       WHERE r.pr_number = ?${serviceSql}
+       WHERE r.pr_number = ?${serviceSql}${pw.sql}
        ORDER BY r.created_at DESC`,
-      params,
+      [...params, ...pw.params],
     );
-    const runs = runRows.map((row) => ({
-      ...mapRun(row),
-      failure_count: num(row.failure_count),
-    }));
+    const runs = runRows.map((row) => mapRun(row));
     const failuresByRun = await fetchFailuresForRunIds(
       pool,
       runs.map((r) => r.id),
     );
-    return runs.map((r) => ({
-      ...r,
-      failures: failuresByRun.get(r.id) ?? [],
-    }));
+    return attachFailuresToRuns(runs, failuresByRun);
   });
 }
 
@@ -291,27 +338,22 @@ export async function loadPrE2eRunsByService(
   limit = 100,
 ): Promise<PrE2eRunWithFailures[]> {
   return withHealthCheckMysqlRetry(async (pool) => {
+    const pw = pipelineWhere("pr");
     const [runRows] = await pool.query<RowDataPacket[]>(
       `SELECT r.*,
         (SELECT COUNT(*) FROM pr_e2e_failures f WHERE f.run_id = r.id) AS failure_count
        FROM pr_e2e_runs r
-       WHERE r.service_repo = ?
+       WHERE r.service_repo = ?${pw.sql}
        ORDER BY r.created_at DESC
        LIMIT ?`,
-      [service, limit],
+      [service, ...pw.params, limit],
     );
-    const runs = runRows.map((row) => ({
-      ...mapRun(row),
-      failure_count: num(row.failure_count),
-    }));
+    const runs = runRows.map((row) => mapRun(row));
     const failuresByRun = await fetchFailuresForRunIds(
       pool,
       runs.map((r) => r.id),
     );
-    return runs.map((r) => ({
-      ...r,
-      failures: failuresByRun.get(r.id) ?? [],
-    }));
+    return attachFailuresToRuns(runs, failuresByRun);
   });
 }
 
@@ -329,6 +371,8 @@ export type PrE2eTestHistoryRow = {
   classification: string;
   pass_rate_pct: number | null;
   e2e_jenkins_result: string;
+  env_suffix: string;
+  env_group: string;
 };
 
 export type PrE2eSearchResultFilters = {
@@ -339,6 +383,7 @@ export type PrE2eSearchResultFilters = {
 const TEST_HISTORY_SELECT = `f.id, f.run_id, f.test_name, f.status, f.error_message, f.tags, f.classification,
   r.created_at, r.service_repo, r.e2e_build_number,
   r.pass_rate_pct, r.e2e_jenkins_result,
+  COALESCE(NULLIF(TRIM(r.env_suffix), ''), '') AS env_suffix,
   COALESCE(NULLIF(TRIM(r.git_author), ''), NULLIF(TRIM(r.git_username), ''), 'unknown') AS git_author`;
 
 function mapTestHistoryRow(row: RowDataPacket): PrE2eTestHistoryRow {
@@ -356,6 +401,8 @@ function mapTestHistoryRow(row: RowDataPacket): PrE2eTestHistoryRow {
     classification: String(row.classification ?? "unknown"),
     pass_rate_pct: numOrNull(row.pass_rate_pct),
     e2e_jenkins_result: String(row.e2e_jenkins_result ?? ""),
+    env_suffix: String(row.env_suffix ?? ""),
+    env_group: classifyPrE2eEnvGroup(row.env_suffix),
   };
 }
 
@@ -536,6 +583,139 @@ export type PrE2eFullDashboard = {
   dbConnectionError: boolean;
 };
 
+/** Core PR E2E data without range-scoped charts (those load per-widget via /api/pr-e2e/query). */
+export async function loadPrE2eDashboardBase(
+  filter: PrE2ePipelineFilter = "pr",
+  runsLimit = DEFAULT_RUNS_LIMIT,
+): Promise<PrE2eFullDashboard> {
+  const empty: PrE2eFullDashboard = {
+    runs: [],
+    stability: [],
+    stats: emptyStats(),
+    daily: [],
+    byService: [],
+    passRateTrend: [],
+    volumeTrend: [],
+    testCountTrend: [],
+    durationTrend: [],
+    topFailing7d: [],
+    topFailing30d: [],
+    fingerprints: [],
+    heatmap: [],
+    failuresByModule: [],
+    failuresByStatus: [],
+    stabilityDist: [],
+    flakinessByModule: [],
+    serviceHealth: [],
+    passRateByEnv: [],
+    runsByTrigger: [],
+    failuresByAuthor: [],
+    ingestTrend: [],
+    ingestErrors: [],
+    ingestStatus: [],
+    passRateWeekDelta: { current: null, previous: null },
+    lastSuccessfulIngest: null,
+    triggerUnknownPct: null,
+    moduleUnknownPct: null,
+    dbConnectionError: true,
+  };
+
+  if (!(await isHealthCheckMysqlReachable())) return empty;
+
+  const [
+    runs,
+    stability,
+    period,
+    topFailing7d,
+    topFailing30d,
+    stabilityDist,
+    flakinessByModule,
+    serviceHealth,
+    ingestTrend,
+    ingestErrors,
+    ingestStatus,
+    passRateWeekDelta,
+    lastSuccessfulIngest,
+    triggerUnknownPct,
+    moduleUnknownPct,
+    fingerprints,
+  ] = await Promise.all([
+    loadPrE2eRuns(runsLimit, filter),
+    loadPrE2eStability(undefined, 50),
+    loadPrE2ePeriodStats(filter),
+    loadTopFailingTests(filter, 7, PR_E2E_ANALYTICS_MAX_ROWS),
+    loadTopFailingTests(filter, 30, PR_E2E_ANALYTICS_MAX_ROWS),
+    loadStabilityDistribution(),
+    loadFlakinessByModule(),
+    loadServiceHealth(filter),
+    loadIngestTrend(),
+    loadRecentIngestErrors(),
+    loadIngestStatusCounts(),
+    loadPassRateWeekDelta(filter),
+    loadLastSuccessfulIngest(),
+    loadTriggerUnknownShare(filter),
+    loadModuleUnknownShare(filter),
+    loadErrorFingerprints(filter, 30, PR_E2E_ANALYTICS_MAX_ROWS),
+  ]);
+
+  const passRuns = runs.filter(runPasses).length;
+  const failRuns = runs.length - passRuns;
+  const flakyCount = stability.filter((s) => s.stability_label === "flaky").length;
+  const failingCount = stability.filter(
+    (s) => s.stability_label === "failing",
+  ).length;
+  const stableCount = stability.filter((s) => s.stability_label === "stable").length;
+  const stabilityTrackedTotal = stabilityDist.reduce((a, s) => a + s.count, 0);
+
+  let health24h: "green" | "amber" | "red" = "green";
+  if (period.runs24h === 0) health24h = "amber";
+  else if (period.fail24h > period.pass24h) health24h = "red";
+  else if (period.fail24h > 0) health24h = "amber";
+
+  return {
+    runs,
+    stability,
+    daily: [],
+    byService: [],
+    passRateTrend: [],
+    volumeTrend: [],
+    testCountTrend: [],
+    durationTrend: [],
+    topFailing7d,
+    topFailing30d,
+    fingerprints,
+    heatmap: [],
+    failuresByModule: [],
+    failuresByStatus: [],
+    stabilityDist,
+    flakinessByModule,
+    serviceHealth,
+    passRateByEnv: [],
+    runsByTrigger: [],
+    failuresByAuthor: [],
+    ingestTrend,
+    ingestErrors,
+    ingestStatus,
+    passRateWeekDelta,
+    lastSuccessfulIngest,
+    triggerUnknownPct,
+    moduleUnknownPct,
+    stats: {
+      ...period,
+      recentRuns: runs.length,
+      passRuns,
+      failRuns,
+      avgPassRate: null,
+      flakyCount,
+      failingCount,
+      stableCount,
+      stabilityTrackedTotal,
+      health24h,
+    },
+    dbConnectionError: false,
+  };
+}
+
 export async function loadPrE2eFullDashboard(
   filter: PrE2ePipelineFilter = "pr",
   runsLimit = DEFAULT_RUNS_LIMIT,
@@ -619,13 +799,13 @@ export async function loadPrE2eFullDashboard(
     loadErrorFingerprints(filter, trendDays, PR_E2E_ANALYTICS_MAX_ROWS),
     loadFailureHeatmap(filter, trendDays, PR_E2E_ANALYTICS_MAX_ROWS),
     loadFailuresByModule(filter, trendDays, PR_E2E_ANALYTICS_MAX_ROWS),
-    loadFailuresByStatus(filter),
+    loadFailuresByStatus(filter, trendDays),
     loadStabilityDistribution(),
     loadFlakinessByModule(),
     loadServiceHealth(filter),
-    loadPassRateByEnv(filter, PR_E2E_ANALYTICS_MAX_ROWS),
-    loadRunsByTrigger(filter),
-    loadFailuresByAuthor(filter, PR_E2E_ANALYTICS_MAX_ROWS),
+    loadPassRateByEnv(filter, 30, PR_E2E_ANALYTICS_MAX_ROWS),
+    loadRunsByTrigger(filter, 30),
+    loadFailuresByAuthor(filter, 30, PR_E2E_ANALYTICS_MAX_ROWS),
     loadIngestTrend(),
     loadRecentIngestErrors(),
     loadIngestStatusCounts(),
@@ -754,8 +934,20 @@ async function loadDailyTrend(
     const pw = pipelineWhere(filter);
     const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT DATE(created_at) AS d,
-        SUM(CASE WHEN failed_count + broken_count = 0 AND e2e_jenkins_result = 'SUCCESS' THEN 1 ELSE 0 END) AS passed,
-        SUM(CASE WHEN NOT (failed_count + broken_count = 0 AND e2e_jenkins_result = 'SUCCESS') THEN 1 ELSE 0 END) AS failed
+        SUM(CASE WHEN
+          GREATEST(
+            COALESCE(failed_count, 0) + COALESCE(broken_count, 0),
+            COALESCE(scenarios_failed, 0)
+          ) = 0
+          AND UPPER(e2e_jenkins_result) = 'SUCCESS'
+        THEN 1 ELSE 0 END) AS passed,
+        SUM(CASE WHEN NOT (
+          GREATEST(
+            COALESCE(failed_count, 0) + COALESCE(broken_count, 0),
+            COALESCE(scenarios_failed, 0)
+          ) = 0
+          AND UPPER(e2e_jenkins_result) = 'SUCCESS'
+        ) THEN 1 ELSE 0 END) AS failed
        FROM pr_e2e_runs r
        WHERE created_at >= ?${pw.sql}
        GROUP BY DATE(created_at)

@@ -21,6 +21,15 @@ export type DashboardNavigateFn = (
 
 const DashboardNavContext = createContext<DashboardNavigateFn | null>(null);
 
+export type DashboardNavState = {
+  pendingTarget: string | null;
+  isNavigating: boolean;
+  isNavigatingTo: (href: string) => boolean;
+  isNavigatingToPath: (pathnamePrefix: string) => boolean;
+};
+
+const DashboardNavStateContext = createContext<DashboardNavState | null>(null);
+
 /** Stable string for pathname + query (sorted) so we can tell when a client nav finished. */
 function normalizeLocation(pathname: string, search: string): string {
   const raw = search.startsWith("?") ? search.slice(1) : search;
@@ -97,8 +106,22 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
 
   const showOverlay = pendingTarget !== null;
 
+  const navState = useMemo<DashboardNavState>(
+    () => ({
+      pendingTarget,
+      isNavigating: pendingTarget !== null,
+      isNavigatingTo: (href: string) =>
+        pendingTarget !== null &&
+        pendingTarget === normalizeHrefAgainstOrigin(href),
+      isNavigatingToPath: (pathnamePrefix: string) =>
+        pendingTarget !== null && pendingTarget.startsWith(pathnamePrefix),
+    }),
+    [pendingTarget],
+  );
+
   return (
     <DashboardNavContext.Provider value={navigate}>
+      <DashboardNavStateContext.Provider value={navState}>
       {children}
       {showOverlay ? (
         <div
@@ -114,6 +137,7 @@ export function DashboardNavProvider({ children }: { children: ReactNode }) {
           </div>
         </div>
       ) : null}
+      </DashboardNavStateContext.Provider>
     </DashboardNavContext.Provider>
   );
 }
@@ -126,4 +150,14 @@ export function useDashboardNavigate(): DashboardNavigateFn {
     );
   }
   return fn;
+}
+
+export function useDashboardNavState(): DashboardNavState {
+  const state = useContext(DashboardNavStateContext);
+  if (!state) {
+    throw new Error(
+      "useDashboardNavState must be used within DashboardNavProvider",
+    );
+  }
+  return state;
 }

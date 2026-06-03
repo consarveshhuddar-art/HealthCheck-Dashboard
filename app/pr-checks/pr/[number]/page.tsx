@@ -1,4 +1,5 @@
-import Link from "next/link";
+import { PrE2ePageLink } from "@/components/prE2e/PrE2ePageLink";
+import { PrE2eTestNameLink } from "@/components/prE2e/PrE2eTestNameLink";
 import { notFound } from "next/navigation";
 import { PrE2eRunsTable } from "@/components/prE2e/PrE2eRunsTable";
 import { DashboardHeader } from "@/components/DashboardHeader";
@@ -67,9 +68,9 @@ export default async function PrCheckPrHistoryPage({
         />
 
         <p className="mb-4 text-[11px]">
-          <Link href="/pr-checks/runs" className="text-violet-800 underline">
+          <PrE2ePageLink href="/pr-checks/runs" className="text-violet-800 underline">
             ← All runs
-          </Link>
+          </PrE2ePageLink>
         </p>
 
         <div className={`mb-4 grid gap-3 sm:grid-cols-3 ${dashboardUi.panel}`}>
@@ -102,12 +103,7 @@ export default async function PrCheckPrHistoryPage({
             <ul className="mt-3 space-y-1 text-[13px]">
               {recurring.map(([name, count]) => (
                 <li key={name}>
-                  <Link
-                    href={`/pr-checks/tests?name=${encodeURIComponent(name)}`}
-                    className="text-violet-800 underline"
-                  >
-                    {name}
-                  </Link>
+                  <PrE2eTestNameLink name={name} />
                   <span className="ml-2 text-[#94A3B8]">×{count}</span>
                 </li>
               ))}

@@ -1,12 +1,14 @@
 "use client";
 
-import Link from "next/link";
 import { Fragment, useState } from "react";
+import { DashboardNavLink } from "@/components/DashboardNavLink";
 import type { PrE2eRunWithFailures } from "@/lib/prE2e/types";
 import {
   effectiveFailureCount,
+  effectiveFailedBrokenOnRun,
   effectivePassRatePct,
   jenkinsResultIsSuccess,
+  runHasIngestedTestData,
   prHistoryHref,
   serviceHref,
   testHistoryHref,
@@ -17,7 +19,7 @@ import { prE2eBadgeStyles } from "@/lib/prE2e/chartColors";
 function statusBadge(run: PrE2eRunWithFailures) {
   const detailIssues = Math.max(
     run.failure_count,
-    run.failed_count + run.broken_count,
+    effectiveFailedBrokenOnRun(run),
   );
   if (detailIssues === 0 && jenkinsResultIsSuccess(run.e2e_jenkins_result)) {
     return {
@@ -27,14 +29,14 @@ function statusBadge(run: PrE2eRunWithFailures) {
     };
   }
   if (detailIssues === 0 && !jenkinsResultIsSuccess(run.e2e_jenkins_result)) {
-    const noAllure = run.total_tests === 0 && run.failures.length === 0;
+    const noAllure = !runHasIngestedTestData(run);
     return {
       label: noAllure
         ? `Jenkins ${run.e2e_jenkins_result} — no test data`
         : run.e2e_jenkins_result || "Failed",
       className: prE2eBadgeStyles.fail,
       title: noAllure
-        ? "Jenkins failed but Allure/per-test rows were not ingested"
+        ? "Jenkins failed but Allure/scenario counts and pr_e2e_failures were not ingested"
         : undefined,
     };
   }
@@ -49,9 +51,12 @@ function statusBadge(run: PrE2eRunWithFailures) {
 export function PrE2eRunsTable({
   runs,
   expandable = false,
+  embedScroll = true,
 }: {
   runs: PrE2eRunWithFailures[];
   expandable?: boolean;
+  /** When false, parent supplies the scroll container (e.g. overview Recent runs). */
+  embedScroll?: boolean;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -63,9 +68,7 @@ export function PrE2eRunsTable({
     );
   }
 
-  return (
-    <div className="overflow-hidden bg-white">
-      <div className="max-h-[560px] overflow-auto">
+  const table = (
         <table className="w-full min-w-[760px] border-collapse text-left text-[13px]">
           <thead>
             <tr className="border-b border-[#EAEFF5] bg-[#F9FAFB] text-[10px] font-medium uppercase tracking-wide text-[#94A3B8]">
@@ -95,7 +98,13 @@ export function PrE2eRunsTable({
                   >
                     {expandable ? (
                       <td className="px-2 py-2 text-center text-[#94A3B8]">
-                        {run.failures.length ? (expanded ? "▼" : "▶") : ""}
+                        {run.failures.length
+                          ? expanded
+                            ? "▼"
+                            : "▶"
+                          : effectiveFailureCount(run) > 0
+                            ? "·"
+                            : ""}
                       </td>
                     ) : null}
                     <td className="whitespace-nowrap px-4 py-2 font-mono text-[11px] text-[#64748B]">
@@ -106,23 +115,23 @@ export function PrE2eRunsTable({
                           .slice(0, 19)}
                     </td>
                     <td className="px-4 py-2">
-                      <Link
+                      <DashboardNavLink
                         href={serviceHref(run.service_repo)}
                         onClick={(e) => e.stopPropagation()}
                         className="font-medium text-violet-800 underline"
                       >
                         {run.service_repo}
-                      </Link>
+                      </DashboardNavLink>
                     </td>
                     <td className="px-4 py-2 tabular-nums">
                       {run.pr_number != null ? (
-                        <Link
+                        <DashboardNavLink
                           href={prHistoryHref(run.pr_number, run.service_repo)}
                           onClick={(e) => e.stopPropagation()}
                           className="text-violet-800 underline"
                         >
                           #{run.pr_number}
-                        </Link>
+                        </DashboardNavLink>
                       ) : (
                         "—"
                       )}
@@ -160,12 +169,12 @@ export function PrE2eRunsTable({
                           {run.failures.slice(0, 12).map((f) => (
                             <li key={f.id} className="space-y-1">
                               <div className="flex flex-wrap items-center gap-2">
-                                <Link
+                                <DashboardNavLink
                                   href={testHistoryHref(f.test_name)}
                                   className="text-violet-800 underline"
                                 >
                                   {f.test_name}
-                                </Link>
+                                </DashboardNavLink>
                                 <span className="text-[#94A3B8]">{f.status}</span>
                               </div>
                               <PrE2eTestTags tags={f.tags} />
@@ -174,12 +183,12 @@ export function PrE2eRunsTable({
                           {run.failures.length > 12 ? (
                             <li className="text-[#94A3B8]">
                               +{run.failures.length - 12} more —{" "}
-                              <Link
+                              <DashboardNavLink
                                 href={`/pr-checks/runs/${run.id}`}
                                 className="underline"
                               >
                                 run detail
-                              </Link>
+                              </DashboardNavLink>
                             </li>
                           ) : null}
                         </ul>
@@ -191,7 +200,15 @@ export function PrE2eRunsTable({
             })}
           </tbody>
         </table>
-      </div>
+  );
+
+  if (!embedScroll) {
+    return <div className="bg-white">{table}</div>;
+  }
+
+  return (
+    <div className="overflow-hidden bg-white">
+      <div className="max-h-[560px] overflow-auto">{table}</div>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { MysqlConnectionErrorBanner } from "@/components/MysqlConnectionErrorBanner";
-import { PrE2eIngestCharts } from "@/components/prE2e/PrE2eDashboardCharts";
+import { PrE2eIngestTrendPanel } from "@/components/prE2e/PrE2eAnalyticsRangeSections";
 import {
   PrE2eIngestErrorsTable,
   PrE2eNamedCountTable,
@@ -12,7 +12,7 @@ import {
 } from "@/lib/credentials";
 import { getOrSetDashboardMysqlCache } from "@/lib/dashboard-cache";
 import { dashboardUi } from "@/lib/dashboardUi";
-import { loadPrE2eFullDashboard } from "@/lib/prE2e/data";
+import { loadPrE2eDashboardBase } from "@/lib/prE2e/data";
 import { PR_E2E_PIPELINE_FILTER } from "@/lib/prE2e/types";
 import { isHealthCheckMysqlConfigured } from "@/lib/mysql/server";
 
@@ -27,8 +27,8 @@ export default async function PrChecksIngestPage() {
     dbReady && credTableReady ? await getCredentialAlertCounts() : null;
 
   const data = dbReady
-    ? await getOrSetDashboardMysqlCache("pr-e2e:ingest:v2", () =>
-        loadPrE2eFullDashboard(PR_E2E_PIPELINE_FILTER, 5),
+    ? await getOrSetDashboardMysqlCache("pr-e2e:ingest-base:v1", () =>
+        loadPrE2eDashboardBase(PR_E2E_PIPELINE_FILTER, 5),
       )
     : null;
 
@@ -66,14 +66,7 @@ export default async function PrChecksIngestPage() {
 
         <div className="grid gap-4 lg:grid-cols-5">
           <div className="lg:col-span-3">
-            <PrE2ePanel
-              title="Ingest success rate over time"
-              description="ok vs error vs skipped_duplicate per day."
-            >
-              <div className={dashboardUi.chartWell}>
-                <PrE2eIngestCharts ingestTrend={data?.ingestTrend ?? []} />
-              </div>
-            </PrE2ePanel>
+            <PrE2eIngestTrendPanel />
           </div>
           <div className="lg:col-span-2">
             <PrE2ePanel title="Status totals">

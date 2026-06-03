@@ -21,6 +21,7 @@ export default async function PrChecksRunsPage({
     service?: string;
     pr?: string;
     author?: string;
+    env?: string;
   }>;
 }) {
   const sp = await searchParams;
@@ -51,7 +52,7 @@ export default async function PrChecksRunsPage({
         <DashboardHeader
           eyebrow="PR E2E"
           title="All runs"
-          description="Filter by service, git author, result, or PR. Expand a row to see failed tests inline."
+          description="Filter by service, environment, git author, result, or PR. Expand a row to see failed tests inline."
           alerts={alerts}
           showCredentialsNav={false}
         />
@@ -67,6 +68,7 @@ export default async function PrChecksRunsPage({
             initialService={sp.service ?? ""}
             initialPr={sp.pr ?? ""}
             initialAuthor={sp.author ?? ""}
+            initialEnv={sp.env ?? ""}
           />
         </section>
       </div>

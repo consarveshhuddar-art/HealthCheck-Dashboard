@@ -1,5 +1,7 @@
-import Link from "next/link";
+"use client";
+
 import { PrE2eScrollRegion } from "@/components/prE2e/PrE2eScrollRegion";
+import { DashboardNavLink } from "@/components/DashboardNavLink";
 import type { TopFailingCompareRow } from "@/lib/prE2e/format";
 import { PR_E2E_ANALYTICS_MAX_ROWS } from "@/lib/prE2e/limits";
 import { testHistoryHref } from "@/lib/prE2e/types";
@@ -37,12 +39,12 @@ export function PrE2eTopFailingCompare({ rows }: { rows: TopFailingCompareRow[] 
               className={`border-b border-[#EAEFF5] ${i % 2 ? "bg-[#F9FAFB]/80" : "bg-white"}`}
             >
               <td className="max-w-[240px] truncate px-3 py-2" title={row.name}>
-                <Link
+                <DashboardNavLink
                   href={testHistoryHref(row.name)}
                   className="text-violet-800 underline"
                 >
                   {row.name}
-                </Link>
+                </DashboardNavLink>
               </td>
               <td className="px-3 py-2 text-right tabular-nums font-medium">
                 {row.count7d}

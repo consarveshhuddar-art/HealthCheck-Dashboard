@@ -1,5 +1,7 @@
+"use client";
+
 import type { ReactNode } from "react";
-import Link from "next/link";
+import { DashboardNavLink } from "@/components/DashboardNavLink";
 import type {
   PrE2eFingerprintRow,
   PrE2eHeatmapCell,
@@ -61,19 +63,19 @@ export function PrE2eNamedCountTable({
             >
               <td className="max-w-[280px] truncate px-3 py-2" title={row.name}>
                 {linkTests ? (
-                  <Link
+                  <DashboardNavLink
                     href={testHistoryHref(row.name)}
                     className="text-violet-800 underline decoration-violet-200/60"
                   >
                     {row.name}
-                  </Link>
+                  </DashboardNavLink>
                 ) : linkServices ? (
-                  <Link
+                  <DashboardNavLink
                     href={serviceHref(row.name)}
                     className="text-violet-800 underline decoration-violet-200/60"
                   >
                     {row.name}
-                  </Link>
+                  </DashboardNavLink>
                 ) : (
                   row.name
                 )}
@@ -153,12 +155,12 @@ export function PrE2eServiceHealthTable({ rows }: { rows: PrE2eServiceHealth[] }
                 </span>
               </td>
               <td className="px-3 py-2">
-                <Link
+                <DashboardNavLink
                   href={serviceHref(row.service)}
                   className="font-medium text-violet-800 underline"
                 >
                   {row.service}
-                </Link>
+                </DashboardNavLink>
               </td>
               <td className="px-3 py-2 text-right tabular-nums">{row.runs}</td>
               <td className="px-3 py-2 text-right tabular-nums">
@@ -204,9 +206,13 @@ export function PrE2eHeatmapGrid({ cells }: { cells: PrE2eHeatmapCell[] }) {
                 className="sticky left-0 z-10 max-w-[200px] truncate bg-white px-1 py-0.5 text-[#64748B]"
                 title={test}
               >
-                <Link href={testHistoryHref(test)} className="hover:underline" title={test}>
+                <DashboardNavLink
+                  href={testHistoryHref(test)}
+                  className="hover:underline"
+                  title={test}
+                >
                   {test.length > 36 ? `${test.slice(0, 36)}…` : test}
-                </Link>
+                </DashboardNavLink>
               </td>
               {dates.map((d) => {
                 const c = lookup.get(`${d}|${test}`) ?? 0;
@@ -270,21 +276,30 @@ function EmptyState({ message }: { message: string }) {
 export function PrE2ePanel({
   title,
   description,
+  headerActions,
   children,
   className = "",
 }: {
   title: string;
   description?: string;
+  headerActions?: ReactNode;
   children: ReactNode;
   className?: string;
 }) {
   return (
     <section className={`${dashboardUi.panel} ${className}`}>
       <div className={dashboardUi.panelHeaderDivider}>
-        <h2 className={dashboardUi.panelTitle}>{title}</h2>
-        {description ? (
-          <p className={dashboardUi.panelDesc}>{description}</p>
-        ) : null}
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h2 className={dashboardUi.panelTitle}>{title}</h2>
+            {description ? (
+              <p className={dashboardUi.panelDesc}>{description}</p>
+            ) : null}
+          </div>
+          {headerActions ? (
+            <div className="shrink-0">{headerActions}</div>
+          ) : null}
+        </div>
       </div>
       <div className="mt-3">{children}</div>
     </section>

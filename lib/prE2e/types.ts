@@ -36,6 +36,11 @@ export type PrE2eRun = {
   skipped_count: number;
   unknown_count: number;
   pass_rate_pct: number | null;
+  /** Cucumber scenario txt counts from ingest (fallback when Allure summary is empty). */
+  scenarios_total: number | null;
+  scenarios_passed: number | null;
+  scenarios_failed: number | null;
+  scenarios_skipped: number | null;
   allure_url: string | null;
   gcs_report_path: string | null;
 };
@@ -179,10 +184,82 @@ export function jenkinsResultIsSuccess(result: string): boolean {
   return result.trim().toUpperCase() === "SUCCESS";
 }
 
+type PrE2eRunCountFields = Pick<
+  PrE2eRun,
+  | "total_tests"
+  | "passed_count"
+  | "failed_count"
+  | "broken_count"
+  | "scenarios_total"
+  | "scenarios_passed"
+  | "scenarios_failed"
+>;
+
+type PrE2eRunFailureCountFields = Pick<
+  PrE2eRun,
+  | "total_tests"
+  | "failed_count"
+  | "broken_count"
+  | "scenarios_total"
+  | "scenarios_failed"
+>;
+
+/** Total tests on the run row — prefers Allure, falls back to Cucumber scenario txt. */
+export function effectiveTotalTests(
+  run: Pick<PrE2eRun, "total_tests" | "scenarios_total">,
+): number {
+  if (run.total_tests > 0) return run.total_tests;
+  return run.scenarios_total ?? 0;
+}
+
+export function effectivePassedCount(
+  run: Pick<
+    PrE2eRun,
+    "passed_count" | "total_tests" | "scenarios_total" | "scenarios_passed"
+  >,
+): number {
+  if (run.total_tests > 0) return run.passed_count;
+  if ((run.scenarios_total ?? 0) > 0) return run.scenarios_passed ?? 0;
+  return run.passed_count;
+}
+
+/** Failed/broken count on the run row — prefers Allure, falls back to scenario txt. */
+export function effectiveFailedBrokenOnRun(run: PrE2eRunFailureCountFields): number {
+  const fromAllure = run.failed_count + run.broken_count;
+  const fromScenarios = run.scenarios_failed ?? 0;
+  if (run.total_tests > 0) return fromAllure;
+  if ((run.scenarios_total ?? 0) > 0) return fromScenarios;
+  return Math.max(fromAllure, fromScenarios);
+}
+
+export function runHasIngestedTestData(
+  run: Pick<
+    PrE2eRun,
+    | "total_tests"
+    | "pass_rate_pct"
+    | "failed_count"
+    | "broken_count"
+    | "scenarios_total"
+    | "scenarios_failed"
+  > & { failure_count?: number },
+): boolean {
+  return (
+    effectiveTotalTests(run) > 0 ||
+    run.pass_rate_pct != null ||
+    effectiveFailedBrokenOnRun(run) > 0 ||
+    (run.failure_count ?? 0) > 0
+  );
+}
+
 export function runPasses(
   run: Pick<
     PrE2eRun,
-    "failed_count" | "broken_count" | "e2e_jenkins_result"
+    | "failed_count"
+    | "broken_count"
+    | "e2e_jenkins_result"
+    | "total_tests"
+    | "scenarios_total"
+    | "scenarios_failed"
   > & { failure_count?: number },
 ): boolean {
   const fc = effectiveFailureCount({
@@ -190,33 +267,52 @@ export function runPasses(
     failed_count: run.failed_count,
     broken_count: run.broken_count,
     e2e_jenkins_result: run.e2e_jenkins_result,
+    total_tests: run.total_tests,
+    scenarios_total: run.scenarios_total,
+    scenarios_failed: run.scenarios_failed,
   });
   return fc === 0 && jenkinsResultIsSuccess(run.e2e_jenkins_result);
 }
 
-/** Allure pass % on the run row, or derived from passed/total when ingest omitted pass_rate_pct. */
+/** Pass % from DB column, or derived from passed/total (Allure or scenario txt). */
 export function effectivePassRatePct(
-  run: Pick<PrE2eRun, "pass_rate_pct" | "passed_count" | "total_tests">,
+  run: Pick<
+    PrE2eRun,
+    | "pass_rate_pct"
+    | "passed_count"
+    | "total_tests"
+    | "scenarios_total"
+    | "scenarios_passed"
+  >,
 ): number | null {
   if (run.pass_rate_pct != null) return run.pass_rate_pct;
-  if (run.total_tests > 0) {
-    return Math.round((run.passed_count / run.total_tests) * 10000) / 100;
+  const total = effectiveTotalTests(run);
+  if (total > 0) {
+    return Math.round((effectivePassedCount(run) / total) * 10000) / 100;
   }
   return null;
 }
 
 /**
- * Failed/broken tests from pr_e2e_failures or Allure counts on the run.
+ * Failed/broken tests from pr_e2e_failures or run-row counts.
  * When ingest only stored Jenkins outcome, a non-SUCCESS result counts as 1.
  */
 export function effectiveFailureCount(
-  run: Pick<PrE2eRun, "failed_count" | "broken_count" | "e2e_jenkins_result"> & {
+  run: Pick<
+    PrE2eRun,
+    | "failed_count"
+    | "broken_count"
+    | "e2e_jenkins_result"
+    | "total_tests"
+    | "scenarios_total"
+    | "scenarios_failed"
+  > & {
     failure_count: number;
   },
 ): number {
   const fromDetail = Math.max(
     run.failure_count,
-    run.failed_count + run.broken_count,
+    effectiveFailedBrokenOnRun(run),
   );
   if (fromDetail > 0) return fromDetail;
   if (!jenkinsResultIsSuccess(run.e2e_jenkins_result)) return 1;
