@@ -137,6 +137,13 @@ export type PrE2eDurationPoint = { label: string; avgMs: number | null; runs: nu
 
 export type PrE2eServicePoint = { service: string; failures: number; runs: number };
 
+/** Per-service failed vs total runs on one IST calendar day. */
+export type PrE2eServiceDayFailure = {
+  service: string;
+  failedRuns: number;
+  totalRuns: number;
+};
+
 export type PrE2eNamedCount = { name: string; count: number; extra?: number };
 
 export type PrE2eServiceHealth = {

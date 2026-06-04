@@ -17,8 +17,10 @@ const C = prE2eChartColors;
 
 export function PrE2eFailuresByServiceChart({
   data,
+  barFill = C.serviceFailure,
 }: {
   data: PrE2eServicePoint[];
+  barFill?: string;
 }) {
   if (!data.length) return null;
 
@@ -52,7 +54,7 @@ export function PrE2eFailuresByServiceChart({
               tick={{ fontSize: 9 }}
             />
             <Tooltip />
-            <Bar dataKey="failures" fill={C.unknown} name="Failures" />
+            <Bar dataKey="failures" fill={barFill} name="Failed runs" />
           </BarChart>
         </ResponsiveContainer>
       </PrE2eScrollRegion>

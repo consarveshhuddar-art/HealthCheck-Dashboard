@@ -8,6 +8,8 @@ export const prE2eChartColors = {
   aborted: "#94A3B8",
   skipped: "#94A3B8",
   unknown: "#6366F1",
+  /** Light orange — service failure bars */
+  serviceFailure: "#FDBA74",
   volume: "#6366F1",
   duration: "#94A3B8",
   grid: "#EAEFF5",

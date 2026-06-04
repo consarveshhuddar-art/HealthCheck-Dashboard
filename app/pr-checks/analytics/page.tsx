@@ -5,6 +5,7 @@ import {
   PrE2eAnalyticsTopFailingPanel,
 } from "@/components/prE2e/PrE2eAnalyticsRangeSections";
 import { PrE2eDataBanners } from "@/components/prE2e/PrE2eDataBanners";
+import { PrE2eServiceFailuresByDayPanel } from "@/components/prE2e/PrE2eServiceFailuresByDayPanel";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import {
   getCredentialAlertCounts,
@@ -53,6 +54,8 @@ export default async function PrChecksAnalyticsPage() {
           moduleUnknownPct={data?.moduleUnknownPct ?? null}
           fingerprintCount={data?.fingerprints.length ?? 0}
         />
+
+        <PrE2eServiceFailuresByDayPanel className="mt-0" />
 
         <PrE2eAnalyticsTopFailingPanel />
 

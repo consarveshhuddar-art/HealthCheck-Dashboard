@@ -15,7 +15,7 @@ export const PR_E2E_TREND_RANGE_BUTTONS: { key: string; label: string }[] = [
 ];
 
 export function parseTrendDays(raw: string | undefined): PrE2eTrendDays {
-  if (raw === "1" || raw === "7" || raw === "90") {
+  if (raw === "1" || raw === "7" || raw === "30" || raw === "90") {
     return Number(raw) as PrE2eTrendDays;
   }
   return PR_E2E_TREND_DAYS_DEFAULT;

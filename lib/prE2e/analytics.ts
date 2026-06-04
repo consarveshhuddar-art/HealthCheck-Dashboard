@@ -14,6 +14,7 @@ import type {
   PrE2ePipelineFilter,
   PrE2ePrRaisedPoint,
   PrE2ePrRaisedSummary,
+  PrE2eServiceDayFailure,
   PrE2eServiceHealth,
   PrE2eServicePoint,
   PrE2eTestCountPoint,
@@ -444,6 +445,64 @@ export async function loadFailuresByService(
       runs: num(row.runs),
       failures: num(row.failures),
     }));
+  });
+}
+
+function mapServiceDayFailureRows(rows: RowDataPacket[]): PrE2eServiceDayFailure[] {
+  return rows.map((row) => ({
+    service: String(row.service ?? "unknown"),
+    failedRuns: num(row.failed_runs),
+    totalRuns: num(row.total_runs),
+  }));
+}
+
+/** Failed PR E2E runs per service on one IST calendar day (`yyyy-MM-dd`). */
+export async function loadServiceFailuresOnIstDay(
+  istDate: string,
+  filter: PrE2ePipelineFilter = "pr",
+  limit = PR_E2E_ANALYTICS_MAX_ROWS,
+): Promise<PrE2eServiceDayFailure[]> {
+  return withHealthCheckMysqlRetry(async (pool) => {
+    const pc = pipelineClause(filter);
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT r.service_repo AS service,
+        COUNT(*) AS total_runs,
+        SUM(CASE WHEN NOT (${PASS_EXPR}) THEN 1 ELSE 0 END) AS failed_runs
+       FROM pr_e2e_runs r
+       WHERE DATE(CONVERT_TZ(r.created_at, '+00:00', '+05:30')) = ?
+         ${pc.sql}
+       GROUP BY r.service_repo
+       HAVING failed_runs > 0
+       ORDER BY failed_runs DESC, total_runs DESC
+       LIMIT ?`,
+      [istDate, ...pc.params, limit],
+    );
+    return mapServiceDayFailureRows(rows);
+  });
+}
+
+/** Failed PR E2E runs per service over the last N days (rolling window). */
+export async function loadServiceFailuresInRange(
+  days: number,
+  filter: PrE2ePipelineFilter = "pr",
+  limit = PR_E2E_ANALYTICS_MAX_ROWS,
+): Promise<PrE2eServiceDayFailure[]> {
+  return withHealthCheckMysqlRetry(async (pool) => {
+    const since = subDays(new Date(), days);
+    const pc = pipelineClause(filter);
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT r.service_repo AS service,
+        COUNT(*) AS total_runs,
+        SUM(CASE WHEN NOT (${PASS_EXPR}) THEN 1 ELSE 0 END) AS failed_runs
+       FROM pr_e2e_runs r
+       WHERE r.created_at >= ?${pc.sql}
+       GROUP BY r.service_repo
+       HAVING failed_runs > 0
+       ORDER BY failed_runs DESC, total_runs DESC
+       LIMIT ?`,
+      [since, ...pc.params, limit],
+    );
+    return mapServiceDayFailureRows(rows);
   });
 }
 
