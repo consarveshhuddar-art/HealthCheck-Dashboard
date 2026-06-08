@@ -5,6 +5,22 @@ export const PR_E2E_FIXED_ENVS = ["k8s-sdet-02", "k8s-sdet-05"] as const;
 
 export const PR_E2E_EPHEMERAL_ENV_LABEL = "ephemeral";
 
+/** Env groups shown in per-service failure breakdowns. */
+export const PR_E2E_ENV_GROUPS = [
+  ...PR_E2E_FIXED_ENVS,
+  PR_E2E_EPHEMERAL_ENV_LABEL,
+] as const;
+
+export type PrE2eEnvGroup = (typeof PR_E2E_ENV_GROUPS)[number];
+
+/** SQL CASE for grouping runs into the three env buckets (else NULL). */
+export const SQL_PR_E2E_ENV_GROUP = `CASE
+  WHEN TRIM(COALESCE(r.env_suffix, '')) = 'k8s-sdet-02' THEN 'k8s-sdet-02'
+  WHEN TRIM(COALESCE(r.env_suffix, '')) = 'k8s-sdet-05' THEN 'k8s-sdet-05'
+  WHEN TRIM(COALESCE(r.env_suffix, '')) <> '' THEN 'ephemeral'
+  ELSE NULL
+END`;
+
 /** Map run env_suffix to k8s-sdet-02, k8s-sdet-05, or ephemeral rollup. */
 export function classifyPrE2eEnvGroup(envSuffix: string | null | undefined): string {
   const env = (envSuffix ?? "").trim();

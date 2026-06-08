@@ -1,3 +1,5 @@
+import type { PrE2eEnvGroup } from "@/lib/prE2e/envGroups";
+
 export type PrE2ePipelineFilter = "all" | "pr" | "release";
 
 /** PR E2E dashboard only shows PR pipeline runs (not release). */
@@ -157,6 +159,17 @@ export type PrE2eServiceHealth = {
   rag: "green" | "amber" | "red";
 };
 
+export type PrE2eServiceEnvStats = {
+  failPct: number | null;
+  runs: number;
+  failedRuns: number;
+};
+
+export type PrE2eServiceEnvFailurePct = {
+  service: string;
+  envs: Record<PrE2eEnvGroup, PrE2eServiceEnvStats>;
+};
+
 export type PrE2eHeatmapCell = { date: string; test: string; count: number };
 
 export type PrE2eFingerprintRow = {
@@ -293,6 +306,21 @@ export function runPasses(
     scenarios_failed: run.scenarios_failed,
   });
   return fc === 0 && jenkinsResultIsSuccess(run.e2e_jenkins_result);
+}
+
+/** Service card / status dot from the most recent run only. */
+export function ragFromLastRun(
+  run: Pick<
+    PrE2eRun,
+    | "failed_count"
+    | "broken_count"
+    | "e2e_jenkins_result"
+    | "total_tests"
+    | "scenarios_total"
+    | "scenarios_failed"
+  > & { failure_count?: number },
+): "green" | "red" {
+  return runPasses(run) ? "green" : "red";
 }
 
 /** Pass % from DB column, or derived from passed/total (Allure or scenario txt). */

@@ -29,3 +29,10 @@ export function passRateCellClass(rate: number | null | undefined): string {
   if (rate < 99) return "font-medium text-[#D97706]";
   return "font-medium text-[#16A34A]";
 }
+
+export function failRateCellClass(rate: number | null | undefined): string {
+  if (rate == null) return "text-[#64748B]";
+  if (rate >= 20) return "font-medium text-[#DC2626]";
+  if (rate >= 5) return "font-medium text-[#D97706]";
+  return "font-medium text-[#16A34A]";
+}

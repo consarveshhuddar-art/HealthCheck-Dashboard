@@ -126,7 +126,13 @@ export function PrE2eFingerprintTable({ rows }: { rows: PrE2eFingerprintRow[] })
   );
 }
 
-export function PrE2eServiceHealthTable({ rows }: { rows: PrE2eServiceHealth[] }) {
+export function PrE2eServiceHealthTable({
+  rows,
+  days = 30,
+}: {
+  rows: PrE2eServiceHealth[];
+  days?: number;
+}) {
   if (!rows.length) return <EmptyState message="No service runs yet." />;
   return (
     <div className="overflow-auto">
@@ -135,7 +141,7 @@ export function PrE2eServiceHealthTable({ rows }: { rows: PrE2eServiceHealth[] }
           <tr className="border-b border-[#EAEFF5] bg-[#F9FAFB] text-[10px] font-medium uppercase tracking-wide text-[#94A3B8]">
             <th className="px-3 py-2">Status</th>
             <th className="px-3 py-2">Service</th>
-            <th className="px-3 py-2 text-right">Runs (30d)</th>
+            <th className="px-3 py-2 text-right">Runs ({days}d)</th>
             <th className="px-3 py-2 text-right">Pass %</th>
             <th className="px-3 py-2 text-right">Flaky</th>
             <th className="px-3 py-2">Last result</th>

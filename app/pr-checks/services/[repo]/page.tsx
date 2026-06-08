@@ -8,11 +8,19 @@ import {
 } from "@/lib/credentials";
 import { dashboardUi } from "@/lib/dashboardUi";
 import { PrE2eServiceSparkline } from "@/components/prE2e/PrE2eServiceSparkline";
-import { loadServicePassRateTrend } from "@/lib/prE2e/analytics";
+import {
+  loadServiceFailurePctByEnv,
+  loadServicePassRateTrend,
+  loadStabilityFirstSeen,
+} from "@/lib/prE2e/analytics";
+import { PrE2eServiceEnvFailureTable } from "@/components/prE2e/PrE2eServiceEnvFailureTable";
 import { fillPassRateTrend } from "@/lib/prE2e/trendFill";
 import { loadPrE2eRunsByService, loadPrE2eStability } from "@/lib/prE2e/data";
-import { loadStabilityFirstSeen } from "@/lib/prE2e/analytics";
-import { effectivePassRatePct, runPasses } from "@/lib/prE2e/types";
+import {
+  effectivePassRatePct,
+  PR_E2E_PIPELINE_FILTER,
+  runPasses,
+} from "@/lib/prE2e/types";
 import { isHealthCheckMysqlConfigured } from "@/lib/mysql/server";
 
 export const dynamic = "force-dynamic";
@@ -35,12 +43,14 @@ export default async function PrCheckServiceDetailPage({
     );
   }
 
-  const [runs, allStability, sparkRaw, firstSeenMap] = await Promise.all([
-    loadPrE2eRunsByService(service, 80),
-    loadPrE2eStability(undefined, 500),
-    loadServicePassRateTrend(service, 7),
-    loadStabilityFirstSeen([]),
-  ]);
+  const [runs, allStability, sparkRaw, firstSeenMap, envFailRows] =
+    await Promise.all([
+      loadPrE2eRunsByService(service, 80),
+      loadPrE2eStability(undefined, 500),
+      loadServicePassRateTrend(service, 7),
+      loadStabilityFirstSeen([]),
+      loadServiceFailurePctByEnv(PR_E2E_PIPELINE_FILTER, 30, service),
+    ]);
   const sparkline = fillPassRateTrend(sparkRaw, 7);
   const firstSeen: Record<string, string> = {};
   for (const [k, v] of firstSeenMap) firstSeen[k] = v;
@@ -110,6 +120,25 @@ export default async function PrCheckServiceDetailPage({
             <PrE2eServiceSparkline data={sparkline} />
           </div>
         </div>
+
+        <section className={`mb-4 ${dashboardUi.panel}`}>
+          <div className={dashboardUi.panelHeaderDivider}>
+            <h2 className={dashboardUi.panelTitle}>
+              Failure % by environment (30d)
+            </h2>
+            <p className={dashboardUi.panelDesc}>
+              Failed / total runs and fail % in k8s-sdet-02, k8s-sdet-05, and
+              ephemeral clusters.
+            </p>
+          </div>
+          <div className="mt-3">
+            <PrE2eServiceEnvFailureTable
+              rows={envFailRows}
+              days={30}
+              singleService
+            />
+          </div>
+        </section>
 
         {stability.length ? (
           <section className={`mb-4 ${dashboardUi.panel}`}>

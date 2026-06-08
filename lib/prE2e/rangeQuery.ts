@@ -11,6 +11,7 @@ import {
   loadPrE2eTestCountTrend,
   loadPrE2eVolumeTrend,
   loadRunsByTrigger,
+  loadServiceFailurePctByEnv,
   loadServiceHealth,
   loadTopFailingTests,
 } from "@/lib/prE2e/analytics";
@@ -100,6 +101,7 @@ export const PR_E2E_RANGE_METRICS = [
   "passRateByEnv",
   "ingestTrend",
   "serviceHealth",
+  "serviceFailPctByEnv",
   "runs",
   "topFailingCompare",
 ] as const;
@@ -147,6 +149,8 @@ export async function executePrE2eRangeQuery(
       return loadIngestTrend(days);
     case "serviceHealth":
       return loadServiceHealth(filter, days);
+    case "serviceFailPctByEnv":
+      return loadServiceFailurePctByEnv(filter, days);
     case "runs":
       return loadPrE2eRunsInRange(days, PR_E2E_RECENT_RUNS_MAX_ROWS, filter);
     case "topFailingCompare":

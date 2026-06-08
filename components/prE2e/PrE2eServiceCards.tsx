@@ -15,9 +15,11 @@ const ragDot = {
 export function PrE2eServiceCards({
   services,
   sparklines,
+  days = 30,
 }: {
   services: PrE2eServiceHealth[];
   sparklines: Record<string, PrE2ePassRatePoint[]>;
+  days?: number;
 }) {
   if (!services.length) {
     return (
@@ -39,7 +41,7 @@ export function PrE2eServiceCards({
                 <h3 className="truncate font-semibold text-[#0B1220]">{s.service}</h3>
               </div>
               <p className="mt-1 text-[11px] text-[#94A3B8]">
-                Last: {s.lastResult} · {s.runs} runs (30d)
+                Last: {s.lastResult} · {s.runs} runs ({days}d)
               </p>
             </div>
             <PrE2eServiceSparkline data={sparklines[s.service] ?? []} />
@@ -52,7 +54,7 @@ export function PrE2eServiceCards({
               {s.flakyCount} flaky
             </span>
             <span className={`rounded border px-1.5 py-0.5 ${prE2eBadgeStyles.failing}`}>
-              {s.failureCount} test fails
+              {s.failureCount} unique fails
             </span>
           </div>
         </DashboardNavLink>

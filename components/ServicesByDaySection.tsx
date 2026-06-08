@@ -50,7 +50,7 @@ export function ServicesByDaySection({
 
   return (
     <section className={dashboardUi.panel}>
-      <div className="flex flex-col gap-3 border-b border-[#EAEFF5] pb-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className={dashboardUi.filterBarDivider}>
         <div className="min-w-0 space-y-1">
           <h2 className={dashboardUi.panelTitle}>
             Failures per service (by env)

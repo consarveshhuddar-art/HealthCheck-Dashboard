@@ -26,7 +26,13 @@ import {
   SQL_EFFECTIVE_TRIGGER,
 } from "@/lib/prE2e/sqlExprs";
 import { PR_E2E_ANALYTICS_MAX_ROWS } from "@/lib/prE2e/limits";
-import { jenkinsResultIsSuccess } from "@/lib/prE2e/types";
+import {
+  PR_E2E_ENV_GROUPS,
+  SQL_PR_E2E_ENV_GROUP,
+  type PrE2eEnvGroup,
+} from "@/lib/prE2e/envGroups";
+import { jenkinsResultIsSuccess, ragFromLastRun } from "@/lib/prE2e/types";
+import type { PrE2eServiceEnvFailurePct, PrE2eServiceEnvStats } from "@/lib/prE2e/types";
 
 const IST = "Asia/Kolkata";
 export const TREND_DAYS = 30;
@@ -506,6 +512,79 @@ export async function loadServiceFailuresInRange(
   });
 }
 
+function emptyServiceEnvStats(): PrE2eServiceEnvStats {
+  return { failPct: null, runs: 0, failedRuns: 0 };
+}
+
+function emptyServiceEnvMap(): Record<PrE2eEnvGroup, PrE2eServiceEnvStats> {
+  return {
+    "k8s-sdet-02": emptyServiceEnvStats(),
+    "k8s-sdet-05": emptyServiceEnvStats(),
+    ephemeral: emptyServiceEnvStats(),
+  };
+}
+
+function pivotServiceEnvFailureRows(
+  rows: RowDataPacket[],
+): PrE2eServiceEnvFailurePct[] {
+  const envSet = new Set<string>(PR_E2E_ENV_GROUPS);
+  const map = new Map<string, Record<PrE2eEnvGroup, PrE2eServiceEnvStats>>();
+
+  for (const row of rows) {
+    const env = String(row.env_group ?? "");
+    if (!envSet.has(env)) continue;
+    const envKey = env as PrE2eEnvGroup;
+    const service = String(row.service ?? "unknown");
+    const total = num(row.total_runs);
+    const failed = num(row.failed_runs);
+    if (!map.has(service)) map.set(service, emptyServiceEnvMap());
+    const entry = map.get(service)!;
+    entry[envKey] = {
+      runs: total,
+      failedRuns: failed,
+      failPct:
+        total > 0 ? Math.round((failed / total) * 1000) / 10 : null,
+    };
+  }
+
+  return [...map.entries()]
+    .map(([service, envs]) => ({ service, envs }))
+    .sort((a, b) => {
+      const runs = (row: PrE2eServiceEnvFailurePct) =>
+        PR_E2E_ENV_GROUPS.reduce((sum, env) => sum + row.envs[env].runs, 0);
+      return runs(b) - runs(a);
+    });
+}
+
+/** Failed-run % per service in k8s-sdet-02, k8s-sdet-05, and ephemeral env groups. */
+export async function loadServiceFailurePctByEnv(
+  filter: PrE2ePipelineFilter,
+  days = 30,
+  service?: string,
+): Promise<PrE2eServiceEnvFailurePct[]> {
+  return withHealthCheckMysqlRetry(async (pool) => {
+    const since = subDays(new Date(), days);
+    const pc = pipelineClause(filter);
+    const serviceSql = service ? " AND r.service_repo = ?" : "";
+    const params: (Date | string | number)[] = [since, ...pc.params];
+    if (service) params.push(service);
+
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT r.service_repo AS service,
+        ${SQL_PR_E2E_ENV_GROUP} AS env_group,
+        COUNT(*) AS total_runs,
+        SUM(CASE WHEN NOT (${PASS_EXPR}) THEN 1 ELSE 0 END) AS failed_runs
+       FROM pr_e2e_runs r
+       WHERE r.created_at >= ?${pc.sql}${serviceSql}
+         AND ${SQL_PR_E2E_ENV_GROUP} IS NOT NULL
+       GROUP BY r.service_repo, env_group
+       ORDER BY r.service_repo ASC`,
+      params,
+    );
+    return pivotServiceEnvFailureRows(rows);
+  });
+}
+
 export async function loadServiceHealth(
   filter: PrE2ePipelineFilter,
   days = 30,
@@ -518,13 +597,26 @@ export async function loadServiceHealth(
         COUNT(*) AS runs,
         AVG(r.pass_rate_pct) AS pass_rate,
         SUBSTRING_INDEX(GROUP_CONCAT(r.e2e_jenkins_result ORDER BY r.created_at DESC), ',', 1) AS last_result,
-        MAX(r.created_at) AS last_at,
-        SUM(COALESCE(r.failed_count,0) + COALESCE(r.broken_count,0)) AS failures
+        SUBSTRING_INDEX(GROUP_CONCAT(COALESCE(r.failed_count, 0) ORDER BY r.created_at DESC), ',', 1) AS last_failed,
+        SUBSTRING_INDEX(GROUP_CONCAT(COALESCE(r.broken_count, 0) ORDER BY r.created_at DESC), ',', 1) AS last_broken,
+        SUBSTRING_INDEX(GROUP_CONCAT(COALESCE(r.scenarios_failed, 0) ORDER BY r.created_at DESC), ',', 1) AS last_scenarios_failed,
+        MAX(r.created_at) AS last_at
        FROM pr_e2e_runs r
        WHERE r.created_at >= ?${pc.sql}
        GROUP BY r.service_repo
        ORDER BY runs DESC`,
       [since, ...pc.params],
+    );
+    const [uniqueFailRows] = await pool.query<RowDataPacket[]>(
+      `SELECT r.service_repo AS svc, COUNT(DISTINCT f.test_name) AS unique_fails
+       FROM pr_e2e_failures f
+       INNER JOIN pr_e2e_runs r ON r.id = f.run_id
+       WHERE r.created_at >= ?${pc.sql}
+       GROUP BY r.service_repo`,
+      [since, ...pc.params],
+    );
+    const uniqueFailMap = new Map(
+      uniqueFailRows.map((r) => [String(r.svc), num(r.unique_fails)]),
     );
     const [flakyRows] = await pool.query<RowDataPacket[]>(
       `SELECT service_repo AS svc, COUNT(*) AS n
@@ -539,16 +631,15 @@ export async function loadServiceHealth(
     return runRows.map((row) => {
       const passRate = numOrNull(row.pass_rate);
       const lastResult = String(row.last_result ?? "");
-      const failures = num(row.failures);
       const flakyCount = flakyMap.get(String(row.svc)) ?? 0;
-      let rag: "green" | "amber" | "red" = "green";
-      if (!jenkinsResultIsSuccess(lastResult) || failures > 20) rag = "red";
-      else if (
-        (passRate != null && passRate < 95) ||
-        flakyCount > 3 ||
-        failures > 5
-      )
-        rag = "amber";
+      const rag = ragFromLastRun({
+        e2e_jenkins_result: lastResult,
+        failed_count: num(row.last_failed),
+        broken_count: num(row.last_broken),
+        scenarios_failed: num(row.last_scenarios_failed),
+        total_tests: 0,
+        scenarios_total: 0,
+      });
 
       return {
         service: String(row.svc),
@@ -559,7 +650,7 @@ export async function loadServiceHealth(
           ? row.last_at.toISOString()
           : String(row.last_at),
         flakyCount,
-        failureCount: failures,
+        failureCount: uniqueFailMap.get(String(row.svc)) ?? 0,
         rag,
       };
     });

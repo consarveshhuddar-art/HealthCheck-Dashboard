@@ -2,6 +2,8 @@
  * Layered light theme — page vs card vs inset chart (soft contrast).
  */
 const borderSoft = "border border-[#EAEFF5]";
+/** Under section/panel titles, before stats or charts */
+const headerDivider = "border-[#D1D9E6]";
 const cardBg =
   "bg-[linear-gradient(180deg,#FFFFFF_0%,#FCFDFE_100%)]";
 const lift =
@@ -17,7 +19,9 @@ export const dashboardUi = {
   pageHeader: "mb-4 sm:mb-5",
   statGrid: "grid gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4",
   panel: `rounded-[10px] ${borderSoft} ${cardBg} p-3.5 ${lift} ${ease} md:p-4`,
-  panelHeaderDivider: "border-b border-[#EAEFF5] pb-2.5",
+  panelHeaderDivider: `border-b ${headerDivider} pb-2.5`,
+  sectionHeaderDivider: `mb-3 border-b ${headerDivider} pb-2`,
+  filterBarDivider: `flex flex-col gap-3 border-b ${headerDivider} pb-3 sm:flex-row sm:items-start sm:justify-between`,
   panelTitle:
     "text-sm font-semibold tracking-[-0.015em] text-[#1F2937]",
   panelDesc:

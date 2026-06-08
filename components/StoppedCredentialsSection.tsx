@@ -209,7 +209,7 @@ export function StoppedCredentialsSection({
 
   return (
     <section className={`${dashboardUi.panel} mt-5`}>
-      <div className="flex flex-col gap-3 border-b border-[#EAEFF5] pb-3">
+      <div className="flex flex-col gap-3 border-b border-[#D1D9E6] pb-3">
         <button
           type="button"
           className="flex w-full items-center gap-2 text-left"

@@ -14,7 +14,7 @@ export function PrE2eOverviewSection({
 }) {
   return (
     <section className={`mt-6 ${className}`}>
-      <header className="mb-3 border-b border-[#EAEFF5] pb-2">
+      <header className={dashboardUi.sectionHeaderDivider}>
         <h2 className={dashboardUi.sectionLabel}>{title}</h2>
         {description ? (
           <p className={dashboardUi.sectionDesc}>{description}</p>
